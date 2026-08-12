@@ -304,9 +304,9 @@ echo [install] Installing ACE-Step from GitHub (zip archive, no git required) ..
 call :pip_retry install "https://github.com/ace-step/ACE-Step/archive/refs/heads/main.zip"
 
 :: ----------------------------------------------------------
-:: Install Gradio (web UI)
+:: Install Gradio (web UI) - ACE-Step requires exactly 5.49.1
 :: ----------------------------------------------------------
-call :pip_retry install gradio
+call :pip_retry install gradio==5.49.1
 
 :pick_model
 :: ----------------------------------------------------------
@@ -375,7 +375,8 @@ echo.
 :: ----------------------------------------------------------
 "!PIP_TARGET_PY!" "%SCRIPT_DIR%download_model.py" ^
     "!REPO_ID!" "%AI_DIR%" ^
-    --subdir "!CHECKPOINT_SUBDIR!"
+    --subdir "!CHECKPOINT_SUBDIR!" ^
+    --no-default-ignores
 
 if errorlevel 1 (
     echo.
