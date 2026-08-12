@@ -83,7 +83,7 @@ class DownloadModelTests(unittest.TestCase):
 
         lines = [line for line in output.getvalue().splitlines() if "apparent file size" in line]
         self.assertEqual(len(lines), 2)
-        self.assertTrue(all("Warning:" not in line for line in lines))
+        self.assertTrue(all("Note:" in line for line in lines))
 
     def test_download_repo_falls_back_after_aria2_failure_without_logging_token(self) -> None:
         token = "hf_secret_token"

@@ -379,7 +379,7 @@ def _find_missing_downloads(files: List[str], dest_dir: Path) -> List[str]:
 
 def _report_missing_downloads(missing: List[str]) -> None:
     preview = ", ".join(missing[:5])
-    remainder = len(missing) - min(len(missing), 5)
+    remainder = max(0, len(missing) - 5)
     suffix = f" (+{remainder} more)" if remainder else ""
     print(
         f"[download_model] Download verification failed: {len(missing)} file(s) missing: "
