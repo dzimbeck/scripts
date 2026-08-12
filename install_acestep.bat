@@ -319,14 +319,14 @@ echo ============================================================
 echo.
 echo  Available checkpoints (all on https://huggingface.co/ACE-Step):
 echo.
-echo  [1] ACE-Step-v1-3.5B          ~14 GB  (recommended base model)
-echo      Full music generation, all features
+echo  [1] acestep-v15-base               ~14 GB  (recommended default checkpoint)
+echo      Official ACE-Step 1.5 base model
 echo.
-echo  [2] ACE-Step-v1.5             ~14 GB  (latest version, improved quality)
-echo      Best overall quality as of 2026-01
+echo  [2] acestep-v15-sft                ~14 GB  (instruction-tuned for prompts)
+echo      Better prompt following, same ACE-Step 1.5 family
 echo.
-echo  [3] ACE-Step-v1-chinese-rap-LoRA  ~1 GB  (RapMachine LoRA - requires base model)
-echo      Chinese rap generation add-on
+echo  [3] acestep-v15-turbo-continuous   ~14 GB  (fast generation variant)
+echo      Turbo checkpoint focused on lower-latency generation
 echo.
 echo  VRAM guidance:
 echo    8 GB+  : Any option with --cpu_offload true (slower)
@@ -337,25 +337,25 @@ set /p CHOICE="Enter choice [1]: "
 if "!CHOICE!"=="" set "CHOICE=1"
 
 if "!CHOICE!"=="1" (
-    set "REPO_ID=ACE-Step/ACE-Step-v1-3.5B"
-    set "MODEL_NAME=ACE-Step-v1-3.5B"
+    set "REPO_ID=ACE-Step/acestep-v15-base"
+    set "MODEL_NAME=acestep-v15-base"
     set "CHECKPOINT_SUBDIR=checkpoints"
 )
 if "!CHOICE!"=="2" (
-    set "REPO_ID=ACE-Step/ACE-Step-v1.5"
-    set "MODEL_NAME=ACE-Step-v1.5"
+    set "REPO_ID=ACE-Step/acestep-v15-sft"
+    set "MODEL_NAME=acestep-v15-sft"
     set "CHECKPOINT_SUBDIR=checkpoints"
 )
 if "!CHOICE!"=="3" (
-    set "REPO_ID=ACE-Step/ACE-Step-v1-chinese-rap-LoRA"
-    set "MODEL_NAME=ACE-Step-v1-chinese-rap-LoRA"
-    set "CHECKPOINT_SUBDIR=checkpoints-lora"
+    set "REPO_ID=ACE-Step/acestep-v15-turbo-continuous"
+    set "MODEL_NAME=acestep-v15-turbo-continuous"
+    set "CHECKPOINT_SUBDIR=checkpoints"
 )
 
 if not defined REPO_ID (
-    echo [install] Invalid choice. Using default ACE-Step-v1-3.5B.
-    set "REPO_ID=ACE-Step/ACE-Step-v1-3.5B"
-    set "MODEL_NAME=ACE-Step-v1-3.5B"
+    echo [install] Invalid choice. Using default acestep-v15-base.
+    set "REPO_ID=ACE-Step/acestep-v15-base"
+    set "MODEL_NAME=acestep-v15-base"
     set "CHECKPOINT_SUBDIR=checkpoints"
 )
 
