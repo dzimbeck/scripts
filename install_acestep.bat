@@ -5,7 +5,7 @@ title ACE-Step One-Click Installer
 :: ============================================================
 :: ACE-Step One-Click Installer
 :: Installs Python 3.10 + venv fully locally under
-::   acestep-model\  (next to this script) — no system Python needed.
+::   acestep-model\  (next to this script) - no system Python needed.
 :: Downloads chosen ACE-Step checkpoint via download_model.py
 :: Generates run_acestep.bat launcher
 ::
@@ -44,15 +44,15 @@ set "TORCH_INDEX=https://download.pytorch.org/whl/cpu"
 :: ----------------------------------------------------------
 :: Skip Python setup only if the venv python actually WORKS.
 :: A leftover/corrupt python.exe from an interrupted install
-:: must not be treated as "installed" — recreate the venv.
+:: must not be treated as "installed" - recreate the venv.
 :: ----------------------------------------------------------
 if exist "%VENV_DIR%\Scripts\python.exe" (
     "%VENV_DIR%\Scripts\python.exe" --version >nul 2>&1
     if not errorlevel 1 (
-        echo [install] Virtual environment already present — skipping Python setup.
+        echo [install] Virtual environment already present - skipping Python setup.
         goto :install_acestep
     )
-    echo [install] Found broken virtual environment (python.exe won't run) — recreating it.
+    echo [install] Found broken virtual environment - recreating it.
     rmdir /s /q "%VENV_DIR%"
 )
 
@@ -61,7 +61,7 @@ set "PIP_DIRECT=0"
 :: ----------------------------------------------------------
 :: Provision a local Python %PYTHON_VERSION% under AI_DIR.
 :: Method 1 (preferred): official embedded distribution from
-:: python.org (has venv + pip) — no pyenv needed.
+:: python.org (has venv + pip) - no pyenv needed.
 :: Method 2 (fallback): pyenv-win from GitHub, still local.
 :: Method 3 (last resort): embeddable package + get-pip.
 :: ----------------------------------------------------------
@@ -76,14 +76,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
     "(New-Object System.Net.WebClient).DownloadFile('%PY_ZIP_URL%', '%PY_TMP%\python.zip')"
 if not exist "%PY_TMP%\python.zip" (
-    echo [install] python.org download failed — trying pyenv-win from GitHub ...
+    echo [install] python.org download failed - trying pyenv-win from GitHub ...
     goto :try_pyenv
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "Expand-Archive -Path '%PY_TMP%\python.zip' -DestinationPath '%RUNTIME_DIR%' -Force"
 if not exist "%RUNTIME_DIR%\python.exe" (
-    echo [install] Extract failed — trying pyenv-win from GitHub ...
+    echo [install] Extract failed - trying pyenv-win from GitHub ...
     goto :try_pyenv
 )
 set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
@@ -97,7 +97,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "Expand-Archive -Path '%PY_TMP%\pyenv.zip' -DestinationPath '%AI_DIR%' -Force; " ^
     "Move-Item -Path '%AI_DIR%\pyenv-win-master' -Destination '%PYENV_DIR%' -Force"
 if not exist "%PYENV_DIR%\bin\pyenv.bat" (
-    echo [install] pyenv-win unavailable — using embeddable Python + get-pip ...
+    echo [install] pyenv-win unavailable - using embeddable Python + get-pip ...
     goto :try_embeddable
 )
 set "PYENV=%PYENV_DIR%\"
@@ -106,12 +106,12 @@ set "PYENV_HOME=%PYENV_DIR%\"
 set "PATH=%PYENV_DIR%\bin;%PYENV_DIR%\shims;%PATH%"
 call "%PYENV_DIR%\bin\pyenv.bat" install %PYTHON_VERSION% --skip-existing
 if errorlevel 1 (
-    echo [install] pyenv install failed — using embeddable Python + get-pip ...
+    echo [install] pyenv install failed - using embeddable Python + get-pip ...
     goto :try_embeddable
 )
 set "PYTHON_EXE=%PYENV_DIR%\versions\%PYTHON_VERSION%\python.exe"
 if not exist "%PYTHON_EXE%" (
-    echo [install] pyenv did not produce python.exe — using embeddable Python + get-pip ...
+    echo [install] pyenv did not produce python.exe - using embeddable Python + get-pip ...
     goto :try_embeddable
 )
 goto :make_venv
@@ -180,14 +180,14 @@ goto :skip_pip_retry_def
 :pip_retry
     set "_PIP_ARGS=%*"
     for /L %%i in (1,1,3) do (
-        echo [install] pip !_PIP_ARGS! (attempt %%i)
+        echo [install] Running: pip !_PIP_ARGS! attempt %%i of 3
         if "!PIP_DIRECT!"=="1" (
             call "%RUNTIME_DIR%\python.exe" -m pip !_PIP_ARGS!
         ) else (
             call "%VENV_DIR%\Scripts\pip.exe" !_PIP_ARGS!
         )
         if not errorlevel 1 goto :pip_retry_ok
-        echo [install] pip attempt %%i failed — retrying in 3s ...
+        echo [install] pip attempt %%i failed - retrying in 3s ...
         timeout /t 3 >nul
     )
     echo [install] ERROR: pip failed after 3 attempts.
@@ -211,16 +211,16 @@ call :pip_retry install --upgrade pip
 echo [install] Detecting GPU ...
 nvidia-smi >nul 2>&1
 if not errorlevel 1 (
-    echo [install] NVIDIA GPU detected — installing CUDA 12.6 PyTorch wheels.
-    echo [install] (ACE-Step recommends cu126 per their Windows installation guide)
+    echo [install] NVIDIA GPU detected - installing CUDA 12.6 PyTorch wheels.
+    echo [install] ACE-Step recommends cu126 per their Windows installation guide.
     set "TORCH_INDEX=https://download.pytorch.org/whl/cu126"
     set "GPU_DETECTED=1"
 ) else (
-    echo [install] No NVIDIA GPU detected — installing CPU-only PyTorch.
+    echo [install] No NVIDIA GPU detected - installing CPU-only PyTorch.
     echo.
     echo  *** WARNING ***
     echo  ACE-Step is designed for CUDA-capable GPUs.
-    echo  CPU generation will be extremely slow (minutes per clip).
+    echo  CPU generation will be extremely slow - minutes per clip.
     echo  Low-VRAM / no-GPU flags will be set in the launcher automatically:
     echo    --cpu_offload true
     echo  ***************
@@ -244,7 +244,7 @@ call :pip_retry install huggingface_hub
 echo [install] Checking if ACE-Step is already installed ...
 "!PIP_TARGET_PY!" -c "import acestep" >nul 2>&1
 if not errorlevel 1 (
-    echo [install] ACE-Step already installed — skipping.
+    echo [install] ACE-Step already installed - skipping.
     goto :pick_model
 )
 
@@ -273,7 +273,7 @@ echo.
 echo  [2] ACE-Step-v1.5             ~14 GB  (latest version, improved quality)
 echo      Best overall quality as of 2026-01
 echo.
-echo  [3] ACE-Step-v1-chinese-rap-LoRA  ~1 GB  (RapMachine LoRA — requires base model)
+echo  [3] ACE-Step-v1-chinese-rap-LoRA  ~1 GB  (RapMachine LoRA - requires base model)
 echo      Chinese rap generation add-on
 echo.
 echo  VRAM guidance:
@@ -301,7 +301,7 @@ if "!CHOICE!"=="3" (
 )
 
 if not defined REPO_ID (
-    echo [install] Invalid choice. Using default (ACE-Step-v1-3.5B).
+    echo [install] Invalid choice. Using default ACE-Step-v1-3.5B.
     set "REPO_ID=ACE-Step/ACE-Step-v1-3.5B"
     set "MODEL_NAME=ACE-Step-v1-3.5B"
     set "CHECKPOINT_SUBDIR=checkpoints"
@@ -315,7 +315,7 @@ if exist "%AI_DIR%\!CHECKPOINT_SUBDIR!\DOWNLOAD_COMPLETE" (
 
 echo.
 echo [install] Downloading !MODEL_NAME! from !REPO_ID! ...
-echo [install] (Download is resumable — Ctrl+C and re-run the installer to continue.)
+echo [install] Download is resumable - Ctrl+C and re-run the installer to continue.
 echo.
 
 :: ----------------------------------------------------------
@@ -359,10 +359,10 @@ set "CHECKPOINT_PATH=%AI_DIR%\!CHECKPOINT_SUBDIR!"
     echo :: Flags:
     echo ::   --checkpoint_path  : local checkpoint directory
     echo ::   --port             : Gradio server port
-    echo ::   --bf16             : use bfloat16 precision (faster, GPU only)
+    echo ::   --bf16             : use bfloat16 precision - faster on GPU only
     echo ::   --cpu_offload      : offload weights to CPU to save VRAM
-    echo ::   --torch_compile    : compile model for extra speed (optional)
-    echo ::   --overlapped_decode: faster decoding (optional)
+    echo ::   --torch_compile    : compile model for extra speed - optional
+    echo ::   --overlapped_decode: faster decoding - optional
     echo echo Starting ACE-Step on http://127.0.0.1:7865
     echo echo Close this window to stop the server.
     echo echo.
