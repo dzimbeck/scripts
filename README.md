@@ -13,7 +13,7 @@ Downloads and configures [FLUX.2](https://huggingface.co/black-forest-labs) for 
 
 **What it does:**
 
-1. Installs **pyenv-win** + **Python 3.11** locally under `flux2-model\`
+1. Installs **Python 3.11** locally under `flux2-model\` (official python.org NuGet build, with pyenv-win and embeddable-zip fallbacks)
 2. Creates an isolated virtual environment
 3. Detects NVIDIA GPU and installs CUDA or CPU-only PyTorch
 4. Installs `diffusers`, `transformers`, and `gradio`
@@ -41,7 +41,7 @@ Downloads and configures [ACE-Step](https://github.com/ace-step/ACE-Step) for lo
 
 **What it does:**
 
-1. Installs **pyenv-win** + **Python 3.10** locally under `acestep-model\`
+1. Installs **Python 3.10** locally under `acestep-model\` (official python.org NuGet build, with pyenv-win and embeddable-zip fallbacks)
 2. Creates an isolated virtual environment
 3. Detects NVIDIA GPU and installs CUDA 12.6 or CPU-only PyTorch
 4. Installs ACE-Step from GitHub (`pip install git+https://...`) plus `gradio`
