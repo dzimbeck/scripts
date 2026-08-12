@@ -452,9 +452,8 @@ def _progress_watchdog(dest_dir: Path, stop_event: threading.Event) -> None:
                 f"speed={speed:.2f} MB/s  elapsed={elapsed:.0f}s",
                 flush=True,
             )
-        elif delta != 0:
+        elif delta < 0:
             last_bytes = cur_bytes
-            last_change_time = now
         else:
             stall = now - last_change_time
             if (
