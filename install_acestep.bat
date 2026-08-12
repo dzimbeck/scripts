@@ -235,7 +235,7 @@ goto :skip_pip_retry_def
         if "!PIP_DIRECT!"=="1" (
             call "!DIRECT_PY!" -m pip !_PIP_ARGS!
         ) else (
-            call "%VENV_DIR%\Scripts\pip.exe" !_PIP_ARGS!
+            call "%VENV_DIR%\Scripts\python.exe" -m pip !_PIP_ARGS!
         )
         if not errorlevel 1 goto :pip_retry_ok
         echo [install] pip attempt %%i failed - retrying in 3s ...
