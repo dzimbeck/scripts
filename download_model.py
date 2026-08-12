@@ -544,13 +544,14 @@ def _aria2_download_with_retries(
             remaining, repo_id, repo_type, revision, dest_dir, token
         )
         try:
-            if _aria2_download(aria2_bin, input_file, threads, concurrent):
-                return True
+            exited_ok = _aria2_download(aria2_bin, input_file, threads, concurrent)
         finally:
             try:
                 input_file.unlink(missing_ok=True)
             except Exception:
                 pass
+        if exited_ok and not _incomplete_files(remaining, dest_dir):
+            return True
     return not _incomplete_files(remaining, dest_dir)
 
 
