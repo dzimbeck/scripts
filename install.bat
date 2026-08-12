@@ -16,9 +16,9 @@ set "VENV_DIR=%AI_DIR%\venv"
 set "PYTHON_VERSION=3.11.9"
 set "RUNTIME_DIR=%AI_DIR%\python-%PYTHON_VERSION%"
 set "PYENV_DIR=%AI_DIR%\pyenv-win"
-set "PY_ZIP_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
+set "PY_NUGET_URL=https://www.nuget.org/api/v2/package/python/%PYTHON_VERSION%"
 set "PYENV_ZIP_URL=https://github.com/pyenv-win/pyenv-win/archive/refs/heads/master.zip"
-set "PY_EMBED_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-amd64.zip"
+set "PY_EMBED_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
 set "GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py"
 
 :: FLUX.2-specific ignore patterns (passed to download_model.py)
@@ -48,32 +48,56 @@ if exist "%VENV_DIR%\Scripts\python.exe" (
 
 set "PIP_DIRECT=0"
 
+:: A previous run may have finished via the embeddable fallback
+:: (no venv, pip runs directly in the runtime). Detect and reuse it.
+if exist "%RUNTIME_DIR%\python.exe" (
+    "%RUNTIME_DIR%\python.exe" -m pip --version >nul 2>&1
+    if not errorlevel 1 (
+        echo [install] Embeddable Python runtime already present - skipping Python setup.
+        set "PIP_DIRECT=1"
+        set "DIRECT_PY=%RUNTIME_DIR%\python.exe"
+        set "DIRECT_DIR=%RUNTIME_DIR%\"
+        goto :pip_section
+    )
+)
+
 :: ----------------------------------------------------------
 :: Provision a local Python %PYTHON_VERSION% under AI_DIR.
-:: Method 1 (preferred): official embedded distribution from
-:: python.org (has venv + pip) - no pyenv needed.
+:: Method 1 (preferred): official full CPython build published
+:: on NuGet by the python.org team (includes venv + ensurepip).
+:: NOTE: the python.org "embeddable" zip must NOT be used here -
+:: it ships without the venv module ("No module named venv").
 :: Method 2 (fallback): pyenv-win from GitHub, still local.
-:: Method 3 (last resort): embeddable package + get-pip.
+:: Method 3 (last resort): embeddable package + get-pip,
+:: pip runs directly in the runtime (no venv needed).
 :: ----------------------------------------------------------
 set "PYTHON_EXE="
 set "PY_TMP=%AI_DIR%\_pytmp"
 if not exist "%AI_DIR%" mkdir "%AI_DIR%"
 if exist "%PY_TMP%" rmdir /s /q "%PY_TMP%"
 mkdir "%PY_TMP%"
+:: Remove any stale/incomplete runtime from a previous run
+if exist "%RUNTIME_DIR%" rmdir /s /q "%RUNTIME_DIR%"
 
-echo [install] Downloading Python %PYTHON_VERSION% (embedded) from python.org ...
+echo [install] Downloading Python %PYTHON_VERSION% (full, official NuGet build) ...
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
-    "(New-Object System.Net.WebClient).DownloadFile('%PY_ZIP_URL%', '%PY_TMP%\python.zip')"
-if not exist "%PY_TMP%\python.zip" (
-    echo [install] python.org download failed - trying pyenv-win from GitHub ...
+    "(New-Object System.Net.WebClient).DownloadFile('%PY_NUGET_URL%', '%PY_TMP%\python-nuget.zip')"
+if not exist "%PY_TMP%\python-nuget.zip" (
+    echo [install] NuGet download failed - trying pyenv-win from GitHub ...
     goto :try_pyenv
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-    "Expand-Archive -Path '%PY_TMP%\python.zip' -DestinationPath '%RUNTIME_DIR%' -Force"
-if not exist "%RUNTIME_DIR%\python.exe" (
+    "Expand-Archive -Path '%PY_TMP%\python-nuget.zip' -DestinationPath '%PY_TMP%\nuget' -Force"
+if not exist "%PY_TMP%\nuget\tools\python.exe" (
     echo [install] Extract failed - trying pyenv-win from GitHub ...
+    goto :try_pyenv
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "Move-Item -Path '%PY_TMP%\nuget\tools' -Destination '%RUNTIME_DIR%' -Force"
+if not exist "%RUNTIME_DIR%\python.exe" (
+    echo [install] Runtime install failed - trying pyenv-win from GitHub ...
     goto :try_pyenv
 )
 set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
@@ -108,6 +132,7 @@ goto :make_venv
 
 :try_embeddable
 echo [install] Downloading embeddable Python %PYTHON_VERSION% ...
+if exist "%RUNTIME_DIR%" rmdir /s /q "%RUNTIME_DIR%"
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
     "(New-Object System.Net.WebClient).DownloadFile('%PY_EMBED_URL%', '%PY_TMP%\python.zip'); " ^
@@ -135,6 +160,8 @@ if errorlevel 1 (
 )
 set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
 set "PIP_DIRECT=1"
+set "DIRECT_PY=%RUNTIME_DIR%\python.exe"
+set "DIRECT_DIR=%RUNTIME_DIR%\"
 goto :pip_section
 
 :make_venv
@@ -146,7 +173,14 @@ echo [install] Local Python ready: %PYTHON_EXE%
 
 :: ----------------------------------------------------------
 :: Create virtual environment
+:: The venv module must exist (embeddable builds lack it) -
+:: if it's missing, fall back to the direct-pip runtime path.
 :: ----------------------------------------------------------
+"%PYTHON_EXE%" -c "import venv" >nul 2>&1
+if errorlevel 1 (
+    echo [install] This Python runtime has no venv module - using it directly instead.
+    goto :use_runtime_direct
+)
 echo [install] Creating virtual environment ...
 "%PYTHON_EXE%" -m venv "%VENV_DIR%"
 if errorlevel 1 (
@@ -159,6 +193,23 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
     echo [install] Delete the folder "%VENV_DIR%" and re-run this installer.
     pause & exit /b 1
 )
+goto :pip_section
+
+:: Use the runtime directly (no venv): make sure pip is available.
+:use_runtime_direct
+"%PYTHON_EXE%" -m pip --version >nul 2>&1
+if not errorlevel 1 goto :runtime_direct_ok
+"%PYTHON_EXE%" -m ensurepip --default-pip >nul 2>&1
+"%PYTHON_EXE%" -m pip --version >nul 2>&1
+if errorlevel 1 (
+    echo [install] Runtime has no pip either - falling back to embeddable + get-pip ...
+    goto :try_embeddable
+)
+:runtime_direct_ok
+set "PIP_DIRECT=1"
+set "DIRECT_PY=%PYTHON_EXE%"
+for %%D in ("%PYTHON_EXE%") do set "DIRECT_DIR=%%~dpD"
+goto :pip_section
 
 :pip_section
 if exist "%PY_TMP%" rmdir /s /q "%PY_TMP%" 2>nul
@@ -172,7 +223,7 @@ goto :skip_pip_retry_def
     for /L %%i in (1,1,3) do (
         echo [install] Running: pip !_PIP_CMD! attempt %%i of 3
         if "!PIP_DIRECT!"=="1" (
-            call "%RUNTIME_DIR%\python.exe" -m pip !_PIP_CMD!
+            call "!DIRECT_PY!" -m pip !_PIP_CMD!
         ) else (
             call "%VENV_DIR%\Scripts\pip.exe" !_PIP_CMD!
         )
@@ -187,7 +238,7 @@ goto :skip_pip_retry_def
 
 :skip_pip_retry_def
 set "PIP_TARGET_PY=%VENV_DIR%\Scripts\python.exe"
-if "!PIP_DIRECT!"=="1" set "PIP_TARGET_PY=%RUNTIME_DIR%\python.exe"
+if "!PIP_DIRECT!"=="1" set "PIP_TARGET_PY=!DIRECT_PY!"
 
 :: ----------------------------------------------------------
 :: Upgrade pip + install huggingface_hub
@@ -292,11 +343,13 @@ if errorlevel 1 (
 :: Generate run_flux2.bat launcher
 :: ----------------------------------------------------------
 set "LAUNCHER=%SCRIPT_DIR%run_flux2.bat"
+set "ENV_PATH=%VENV_DIR%\Scripts"
+if "!PIP_DIRECT!"=="1" set "ENV_PATH=!DIRECT_DIR!;!DIRECT_DIR!Scripts"
 (
     echo @echo off
     echo setlocal
     echo title FLUX.2 - !MODEL_NAME!
-    echo call "%VENV_DIR%\Scripts\activate.bat"
+    echo set "PATH=!ENV_PATH!;%%PATH%%"
     echo python -c "from diffusers import FluxPipeline; import torch; pipe = FluxPipeline.from_pretrained^('%AI_DIR%\model', torch_dtype=torch.bfloat16^); pipe.to^('cuda' if torch.cuda.is_available^(^) else 'cpu'^); print^('FLUX.2 model loaded! Use pipe^(...^) to generate images.'^)"
     echo cmd /k
 ) > "!LAUNCHER!"
