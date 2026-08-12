@@ -169,14 +169,27 @@ def _is_likely_gated_message(exc: Exception) -> bool:
     return "gated" in msg and ("accept" in msg or "license" in msg or "access request" in msg)
 
 
+def _is_likely_revision_not_found_message(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "revision" in msg and ("not found" in msg or "doesn't exist" in msg or "does not exist" in msg)
+
+
+def _unwrap_exception(exc: Exception) -> Exception:
+    cause = getattr(exc, "__cause__", None)
+    if isinstance(cause, Exception):
+        return cause
+    return exc
+
+
 def _classify_hf_error(exc: Exception, repo_id: str, revision: str) -> tuple[str, str]:
+    base_exc = _unwrap_exception(exc)
     exc_types = _load_hf_exception_types()
     repo_url = f"https://huggingface.co/{repo_id}"
     revision_url = f"{repo_url}/tree/{revision}"
-    status = _http_status_from_exc(exc)
+    status = _http_status_from_exc(base_exc)
 
-    if _safe_isinstance(exc, exc_types["GatedRepoError"]) or (
-        exc_types["GatedRepoError"] is None and _is_likely_gated_message(exc)
+    if _safe_isinstance(base_exc, exc_types["GatedRepoError"]) or (
+        exc_types["GatedRepoError"] is None and _is_likely_gated_message(base_exc)
     ):
         return (
             "gated",
@@ -186,7 +199,11 @@ def _classify_hf_error(exc: Exception, repo_id: str, revision: str) -> tuple[str
             "  2. Set HF_TOKEN=<your_token> and re-run."
         )
 
-    if _safe_isinstance(exc, exc_types["RevisionNotFoundError"]):
+    if _safe_isinstance(base_exc, exc_types["RevisionNotFoundError"]) or (
+        exc_types["RevisionNotFoundError"] is None
+        and status == 404
+        and _is_likely_revision_not_found_message(base_exc)
+    ):
         return (
             "revision_not_found",
             "[download_model] Revision not found for this repository.\n"
@@ -194,7 +211,9 @@ def _classify_hf_error(exc: Exception, repo_id: str, revision: str) -> tuple[str
             "  Verify --revision (branch/tag/commit) and re-run."
         )
 
-    if _safe_isinstance(exc, exc_types["RepositoryNotFoundError"]) or status == 404:
+    # For compatibility across hub versions, raw 404 defaults to repo-not-found
+    # after explicit revision-not-found handling above.
+    if _safe_isinstance(base_exc, exc_types["RepositoryNotFoundError"]) or status == 404:
         return (
             "repo_not_found",
             "[download_model] Repository not found or invalid repo ID.\n"
@@ -210,17 +229,17 @@ def _classify_hf_error(exc: Exception, repo_id: str, revision: str) -> tuple[str
             "  Ensure your HF token is set (HF_TOKEN) and has access to this repo."
         )
 
-    if _safe_isinstance(exc, exc_types["HfHubHTTPError"]):
+    if _safe_isinstance(base_exc, exc_types["HfHubHTTPError"]):
         return (
             "http_error",
             "[download_model] Hugging Face API/network error while accessing the repository.\n"
             f"  URL: {repo_url}\n"
-            f"  Details: {exc}"
+            f"  Details: {base_exc}"
         )
 
     return (
         "other_error",
-        "[download_model] Unexpected error while accessing the repository.\n"
+        "[download_model] Unexpected error while listing/downloading repository files.\n"
         f"  URL: {repo_url}\n"
         f"  Details: {exc}"
     )
@@ -301,14 +320,17 @@ def _list_files(
     token: Optional[str],
 ) -> List[str]:
     """Return list of file paths in the repo."""
-    if repo_type == "model":
-        info = api.model_info(repo_id, revision=revision, token=token)
-    elif repo_type == "dataset":
-        info = api.dataset_info(repo_id, revision=revision, token=token)
-    else:
-        info = api.space_info(repo_id, revision=revision, token=token)
-    siblings = info.siblings or []
-    return [s.rfilename for s in siblings]
+    try:
+        if repo_type == "model":
+            info = api.model_info(repo_id, revision=revision, token=token)
+        elif repo_type == "dataset":
+            info = api.dataset_info(repo_id, revision=revision, token=token)
+        else:
+            info = api.space_info(repo_id, revision=revision, token=token)
+        siblings = info.siblings or []
+        return [s.rfilename for s in siblings]
+    except Exception as exc:
+        raise RuntimeError(f"Failed to list files for {repo_id}") from exc
 
 
 def _filter_files(

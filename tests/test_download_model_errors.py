@@ -86,6 +86,30 @@ class ClassifyHfErrorTests(unittest.TestCase):
         self.assertEqual(kind, "http_error")
         self.assertIn("API/network error", message)
 
+    @patch(
+        "download_model._load_hf_exception_types",
+        return_value={k: None for k in FAKE_TYPES},
+    )
+    def test_revision_not_found_fallback_heuristic(self, _mock_types):
+        kind, _message = download_model._classify_hf_error(
+            _FakeHfHubHTTPError("Revision bad-rev does not exist", status_code=404),
+            "org/model",
+            "bad-rev",
+        )
+        self.assertEqual(kind, "revision_not_found")
+
+    @patch("download_model._load_hf_exception_types", return_value=FAKE_TYPES)
+    def test_runtime_error_with_cause_is_classified_from_cause(self, _mock_types):
+        inner = _FakeRepositoryNotFoundError("missing", status_code=404)
+        wrapped = RuntimeError("Failed to list files")
+        wrapped.__cause__ = inner
+        kind, _message = download_model._classify_hf_error(
+            wrapped,
+            "org/missing",
+            "main",
+        )
+        self.assertEqual(kind, "repo_not_found")
+
 
 if __name__ == "__main__":
     unittest.main()

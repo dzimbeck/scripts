@@ -9,6 +9,7 @@ INSTALL_ACESTEP = REPO_ROOT / "install_acestep.bat"
 README = REPO_ROOT / "README.md"
 
 EXPECTED_FLUX_REPOS = {
+    # Keep these in sync with install.bat FLUX.2 menu REPO_ID mappings.
     "black-forest-labs/FLUX.2-klein-4B",
     "black-forest-labs/FLUX.2-klein-9B",
     "black-forest-labs/FLUX.2-dev",
