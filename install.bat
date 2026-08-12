@@ -284,16 +284,15 @@ echo ============================================================
 echo  FLUX.2 Checkpoint Selection
 echo ============================================================
 echo.
-echo  [1] FLUX.2-klein-4B        ~8 GB   (recommended, 4B params)
-echo  [2] FLUX.2-standard-8B     ~16 GB  (higher quality, 8B params)
-echo  [3] FLUX.1-dev             ~24 GB  (original FLUX.1, highest quality)
-echo  [4] FLUX.1-schnell         ~24 GB  (original FLUX.1, fast)
+echo  [1] FLUX.2-klein-4B        ~8 GB   (recommended, lowest VRAM)
+echo  [2] FLUX.2-klein-9B        ~16 GB  (higher quality, medium VRAM)
+echo  [3] FLUX.2-dev             ~24 GB  (highest quality, highest VRAM)
 echo.
 echo  VRAM guidance:
-echo    4 GB+  : FLUX.2-klein-4B (with quantization)
+echo    4 GB+  : FLUX.2-klein-4B (with quantization / offload)
 echo    8 GB+  : FLUX.2-klein-4B (full)
-echo    16 GB+ : FLUX.2-standard-8B
-echo    24 GB+ : FLUX.1-dev / FLUX.1-schnell
+echo    12 GB+ : FLUX.2-klein-9B
+echo    16 GB+ : FLUX.2-dev
 echo.
 set /p CHOICE="Enter choice [1]: "
 if "!CHOICE!"=="" set "CHOICE=1"
@@ -303,16 +302,12 @@ if "!CHOICE!"=="1" (
     set "MODEL_NAME=FLUX.2-klein-4B"
 )
 if "!CHOICE!"=="2" (
-    set "REPO_ID=black-forest-labs/FLUX.2-standard-8B"
-    set "MODEL_NAME=FLUX.2-standard-8B"
+    set "REPO_ID=black-forest-labs/FLUX.2-klein-9B"
+    set "MODEL_NAME=FLUX.2-klein-9B"
 )
 if "!CHOICE!"=="3" (
-    set "REPO_ID=black-forest-labs/FLUX.1-dev"
-    set "MODEL_NAME=FLUX.1-dev"
-)
-if "!CHOICE!"=="4" (
-    set "REPO_ID=black-forest-labs/FLUX.1-schnell"
-    set "MODEL_NAME=FLUX.1-schnell"
+    set "REPO_ID=black-forest-labs/FLUX.2-dev"
+    set "MODEL_NAME=FLUX.2-dev"
 )
 
 if not defined REPO_ID (

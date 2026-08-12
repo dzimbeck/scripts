@@ -18,10 +18,9 @@ Downloads and configures [FLUX.2](https://huggingface.co/black-forest-labs) for 
 3. Detects NVIDIA GPU and installs CUDA or CPU-only PyTorch
 4. Installs `diffusers`, `transformers`, and `gradio`
 5. Prompts you to choose a checkpoint:
-   - `FLUX.2-klein-4B` (~8 GB, 4 GB+ VRAM)
-   - `FLUX.2-standard-8B` (~16 GB, 8 GB+ VRAM)
-   - `FLUX.1-dev` (~24 GB)
-   - `FLUX.1-schnell` (~24 GB)
+   - `black-forest-labs/FLUX.2-klein-4B` (~8 GB, 4 GB+ VRAM)
+   - `black-forest-labs/FLUX.2-klein-9B` (~16 GB, 12 GB+ VRAM)
+   - `black-forest-labs/FLUX.2-dev` (~24 GB, 16 GB+ VRAM)
 6. Downloads the checkpoint via `download_model.py` (resumable)
 7. Generates `run_flux2.bat` launcher
 
@@ -44,14 +43,14 @@ Downloads and configures [ACE-Step](https://github.com/ace-step/ACE-Step) for lo
 1. Installs **Python 3.10** locally under `acestep-model\` (official python.org NuGet build, with pyenv-win and embeddable-zip fallbacks)
 2. Creates an isolated virtual environment
 3. Detects NVIDIA GPU and installs CUDA 12.6 or CPU-only PyTorch
-4. Installs ACE-Step from GitHub (`pip install git+https://...`) plus `gradio`
+4. Installs ACE-Step from GitHub (`pip install https://...main.zip`) plus `gradio`
 5. Prompts you to choose a checkpoint:
 
    | Option | Repo ID | Size | Notes |
    |--------|---------|------|-------|
-   | 1 (default) | `ACE-Step/ACE-Step-v1-3.5B` | ~14 GB | Recommended base model |
-   | 2 | `ACE-Step/ACE-Step-v1.5` | ~14 GB | Latest, improved quality (Jan 2026) |
-   | 3 | `ACE-Step/ACE-Step-v1-chinese-rap-LoRA` | ~1 GB | RapMachine LoRA (requires base model) |
+   | 1 (default) | `ACE-Step/acestep-v15-base` | ~14 GB | Recommended ACE-Step 1.5 base checkpoint |
+   | 2 | `ACE-Step/acestep-v15-sft` | ~14 GB | ACE-Step 1.5 SFT checkpoint for stronger prompt following |
+   | 3 | `ACE-Step/acestep-v15-turbo-continuous` | ~14 GB | ACE-Step 1.5 turbo checkpoint for faster generation |
 
 6. Downloads checkpoint via `download_model.py` (resumable)
 7. Generates `run_acestep.bat` launcher pointing at the downloaded checkpoint
@@ -68,7 +67,7 @@ Then double-click `run_acestep.bat` to open the Gradio UI at `http://127.0.0.1:7
 
 **License:**
 - Code: [Apache-2.0](https://github.com/ace-step/ACE-Step/blob/main/LICENSE)
-- Model weights: see the [model card](https://huggingface.co/ACE-Step/ACE-Step-v1-3.5B) on Hugging Face for the specific weight license.
+- Model weights: see the [model card](https://huggingface.co/ACE-Step/acestep-v15-base) on Hugging Face for the specific weight license.
 
 ---
 
@@ -90,7 +89,7 @@ A general-purpose Hugging Face downloader that any installer in this repo can re
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `repo_id` | *(required)* | HF repo ID, e.g. `"black-forest-labs/FLUX.1-dev"` |
+| `repo_id` | *(required)* | HF repo ID, e.g. `"black-forest-labs/FLUX.2-klein-4B"` |
 | `ai_dir` | *(required)* | Parent destination directory |
 | `--subdir NAME` | `model` | Subdirectory under `ai_dir` where files land |
 | `--repo-type {model,dataset,space}` | `model` | Repository type |
@@ -114,7 +113,7 @@ A general-purpose Hugging Face downloader that any installer in this repo can re
 
 ```bash
 # 1. Download a model (default subdir "model/"):
-python download_model.py "black-forest-labs/FLUX.1-dev" "ai-model"
+python download_model.py "black-forest-labs/FLUX.2-klein-4B" "ai-model"
 
 # 2. Download only .safetensors files to a custom subdir:
 python download_model.py "stabilityai/stable-diffusion-xl-base-1.0" "ai" \
@@ -125,7 +124,7 @@ python download_model.py "HuggingFaceH4/ultrachat_200k" "datasets" \
     --repo-type dataset --subdir ultrachat
 
 # 4. Download ACE-Step checkpoints:
-python download_model.py "ACE-Step/ACE-Step-v1-3.5B" "ai" --subdir checkpoints
+python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints
 ```
 
 ### Importable API
@@ -134,7 +133,7 @@ python download_model.py "ACE-Step/ACE-Step-v1-3.5B" "ai" --subdir checkpoints
 from download_model import download_repo
 
 ok = download_repo(
-    repo_id="ACE-Step/ACE-Step-v1-3.5B",
+    repo_id="ACE-Step/acestep-v15-base",
     dest="ai",
     subdir="checkpoints",
     repo_type="model",

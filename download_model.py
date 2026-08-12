@@ -27,7 +27,7 @@ Usage (full flags):
 
 Examples:
     # Download a model (default subdir "model/"):
-    python download_model.py "black-forest-labs/FLUX.1-dev" "ai-model"
+    python download_model.py "black-forest-labs/FLUX.2-klein-4B" "ai-model"
 
     # Download only .safetensors files to a custom subdir:
     python download_model.py "stabilityai/stable-diffusion-xl-base-1.0" "ai" \\
@@ -38,7 +38,7 @@ Examples:
         --repo-type dataset --subdir ultrachat
 
     # Download ACE-Step checkpoints:
-    python download_model.py "ACE-Step/ACE-Step-v1-3.5B" "ai" --subdir checkpoints
+    python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints
 """
 
 from __future__ import annotations
@@ -56,6 +56,7 @@ import time
 import urllib.request
 import zipfile
 from pathlib import Path
+import re
 from typing import List, Optional
 
 # ---------------------------------------------------------------------------
@@ -122,6 +123,126 @@ def _dir_bytes(path: Path) -> int:
 
 def _matches_any(name: str, patterns: List[str]) -> bool:
     return any(fnmatch.fnmatch(name, p) for p in patterns)
+
+
+def _safe_isinstance(obj: object, klass: Optional[type]) -> bool:
+    return bool(klass) and isinstance(obj, klass)
+
+
+def _load_hf_exception_types() -> dict:
+    classes = {
+        "GatedRepoError": None,
+        "RepositoryNotFoundError": None,
+        "RevisionNotFoundError": None,
+        "HfHubHTTPError": None,
+    }
+    for module_name in ("huggingface_hub.errors", "huggingface_hub.utils"):
+        try:
+            module = __import__(module_name, fromlist=list(classes.keys()))
+            for name in classes:
+                classes[name] = classes[name] or getattr(module, name, None)
+        except Exception:
+            continue
+    return classes
+
+
+def _http_status_from_exc(exc: Exception) -> Optional[int]:
+    status = getattr(exc, "status_code", None)
+    if isinstance(status, int):
+        return status
+    response = getattr(exc, "response", None)
+    response_status = getattr(response, "status_code", None)
+    if isinstance(response_status, int):
+        return response_status
+    msg = str(exc)
+    match = re.search(r"\b([1-5]\d{2})\b", msg)
+    if match:
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+    return None
+
+
+def _is_likely_gated_message(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "gated" in msg and ("accept" in msg or "license" in msg or "access request" in msg)
+
+
+def _is_likely_revision_not_found_message(exc: Exception) -> bool:
+    msg = str(exc).lower()
+    return "revision" in msg and ("not found" in msg or "doesn't exist" in msg or "does not exist" in msg)
+
+
+def _unwrap_exception(exc: Exception) -> Exception:
+    cause = getattr(exc, "__cause__", None)
+    if isinstance(cause, Exception):
+        return cause
+    return exc
+
+
+def _classify_hf_error(exc: Exception, repo_id: str, revision: str) -> tuple[str, str]:
+    base_exc = _unwrap_exception(exc)
+    exc_types = _load_hf_exception_types()
+    repo_url = f"https://huggingface.co/{repo_id}"
+    revision_url = f"{repo_url}/tree/{revision}"
+    status = _http_status_from_exc(base_exc)
+
+    if _safe_isinstance(base_exc, exc_types["GatedRepoError"]) or (
+        exc_types["GatedRepoError"] is None and _is_likely_gated_message(base_exc)
+    ):
+        return (
+            "gated",
+            "[download_model] This repository is gated and requires access approval/license acceptance.\n"
+            f"  Model page: {repo_url}\n"
+            "  1. Sign in and accept the model license/access request.\n"
+            "  2. Set HF_TOKEN=<your_token> and re-run."
+        )
+
+    if _safe_isinstance(base_exc, exc_types["RevisionNotFoundError"]) or (
+        exc_types["RevisionNotFoundError"] is None
+        and status == 404
+        and _is_likely_revision_not_found_message(base_exc)
+    ):
+        return (
+            "revision_not_found",
+            "[download_model] Revision not found for this repository.\n"
+            f"  Attempted revision URL: {revision_url}\n"
+            "  Verify --revision (branch/tag/commit) and re-run."
+        )
+
+    # For compatibility across hub versions, raw 404 defaults to repo-not-found
+    # after explicit revision-not-found handling above.
+    if _safe_isinstance(base_exc, exc_types["RepositoryNotFoundError"]) or status == 404:
+        return (
+            "repo_not_found",
+            "[download_model] Repository not found or invalid repo ID.\n"
+            f"  Attempted: {repo_url}\n"
+            "  Verify the installer's REPO_ID value and try again."
+        )
+
+    if status in (401, 403):
+        return (
+            "auth",
+            "[download_model] Authentication or private-repository access failure.\n"
+            f"  Attempted: {repo_url}\n"
+            "  Ensure your HF token is set (HF_TOKEN) and has access to this repo."
+        )
+
+    if _safe_isinstance(base_exc, exc_types["HfHubHTTPError"]):
+        return (
+            "http_error",
+            "[download_model] Hugging Face API/network error while accessing the repository.\n"
+            f"  URL: {repo_url}\n"
+            f"  Details: {base_exc}"
+        )
+
+    return (
+        "other_error",
+        "[download_model] Unexpected error while listing/downloading repository files.\n"
+        f"  URL: {repo_url}\n"
+        f"  Details: {exc}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -209,7 +330,7 @@ def _list_files(
         siblings = info.siblings or []
         return [s.rfilename for s in siblings]
     except Exception as exc:
-        raise RuntimeError(f"Failed to list files for {repo_id}: {exc}") from exc
+        raise RuntimeError(f"Failed to list files for {repo_id}") from exc
 
 
 def _filter_files(
@@ -370,13 +491,8 @@ def _snapshot_download_fallback(
         snapshot_download(**kwargs)
         return True
     except Exception as exc:
-        print(f"[download_model] snapshot_download failed: {exc}")
-        if "gated" in str(exc).lower() or "401" in str(exc) or "403" in str(exc):
-            print(
-                "[download_model] This repo may be gated (requires HF login / license acceptance).\n"
-                "  1. Visit https://huggingface.co/" + repo_id + " and accept the license.\n"
-                "  2. Set HF_TOKEN=<your_token> and re-run."
-            )
+        _kind, message = _classify_hf_error(exc, repo_id, revision)
+        print(message)
         return False
 
 
@@ -406,7 +522,7 @@ def download_repo(
     Parameters
     ----------
     repo_id:
-        HF repo ID, e.g. ``"black-forest-labs/FLUX.1-dev"``.
+        HF repo ID, e.g. ``"black-forest-labs/FLUX.2-klein-4B"``.
     dest:
         Parent directory (created if needed).
     subdir:
@@ -468,15 +584,9 @@ def download_repo(
     # List files
     try:
         all_files = _list_files(api, repo_id, repo_type, revision, resolved_token)
-    except RuntimeError as exc:
-        msg = str(exc)
-        if "gated" in msg.lower() or "401" in msg or "403" in msg:
-            print(
-                f"[download_model] Gated repo detected. Visit https://huggingface.co/{repo_id} "
-                "to accept the license, then set HF_TOKEN=<your_token>."
-            )
-            return False
-        print(f"[download_model] Error: {exc}")
+    except Exception as exc:
+        _kind, message = _classify_hf_error(exc, repo_id, revision)
+        print(message)
         return False
 
     filtered = _filter_files(all_files, allow, ignore, use_default_ignores)
@@ -539,7 +649,7 @@ def _build_parser() -> argparse.ArgumentParser:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("repo_id", help="Hugging Face repo ID, e.g. 'black-forest-labs/FLUX.1-dev'")
+    p.add_argument("repo_id", help="Hugging Face repo ID, e.g. 'black-forest-labs/FLUX.2-klein-4B'")
     p.add_argument("dest", metavar="ai_dir", help="Parent destination directory")
     p.add_argument("--subdir", default="model",
                    help="Subdirectory under dest (default: model)")
