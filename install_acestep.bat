@@ -375,7 +375,8 @@ echo.
 :: ----------------------------------------------------------
 "!PIP_TARGET_PY!" "%SCRIPT_DIR%download_model.py" ^
     "!REPO_ID!" "%AI_DIR%" ^
-    --subdir "!CHECKPOINT_SUBDIR!"
+    --subdir "!CHECKPOINT_SUBDIR!" ^
+    --no-default-ignores
 
 if errorlevel 1 (
     echo.

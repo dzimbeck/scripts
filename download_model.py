@@ -55,7 +55,7 @@ import threading
 import time
 import urllib.request
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 from typing import List, Optional
 
@@ -356,6 +356,38 @@ def _filter_files(
     return result
 
 
+def _repo_file_path(dest_dir: Path, rel_path: str) -> Path:
+    return dest_dir.joinpath(*PurePosixPath(rel_path).parts)
+
+
+def _is_downloadable_repo_file(rel_path: str) -> bool:
+    normalized = rel_path.strip().replace("\\", "/")
+    if not normalized or normalized.endswith("/"):
+        return False
+    return PurePosixPath(normalized).name not in ("", ".", "..")
+
+
+def _find_missing_downloads(files: List[str], dest_dir: Path) -> List[str]:
+    missing = []
+    for rel_path in files:
+        if not _is_downloadable_repo_file(rel_path):
+            continue
+        if not _repo_file_path(dest_dir, rel_path).is_file():
+            missing.append(rel_path)
+    return missing
+
+
+def _report_missing_downloads(missing: List[str]) -> None:
+    preview = ", ".join(missing[:5])
+    remainder = len(missing) - min(len(missing), 5)
+    suffix = f" (+{remainder} more)" if remainder else ""
+    print(
+        f"[download_model] Download verification failed: {len(missing)} file(s) missing: "
+        f"{preview}{suffix}",
+        flush=True,
+    )
+
+
 # ---------------------------------------------------------------------------
 # aria2c download
 # ---------------------------------------------------------------------------
@@ -379,13 +411,13 @@ def _build_input_file(
             repo_type=repo_type,
             revision=revision,
         )
-        out_file = dest_dir / rel_path
+        out_file = _repo_file_path(dest_dir, rel_path)
         out_file.parent.mkdir(parents=True, exist_ok=True)
         lines.append(url)
         lines.append(f"  dir={out_file.parent}")
         lines.append(f"  out={out_file.name}")
         if token:
-            lines.append(f"  header=Authorization: ******")
+            lines.append("  header=Authorization: Bearer " + token)
         lines.append("")
 
     tmp = tempfile.NamedTemporaryFile(
@@ -398,12 +430,12 @@ def _build_input_file(
 
 def _progress_watchdog(dest_dir: Path, stop_event: threading.Event) -> None:
     """Periodically print download progress until stop_event is set."""
-    last_bytes = 0
+    last_bytes = _dir_bytes(dest_dir)
     last_change_time = time.time()
+    last_warning_time = 0.0
     start_time = time.time()
 
-    while not stop_event.is_set():
-        time.sleep(POLL_INTERVAL)
+    while not stop_event.wait(POLL_INTERVAL):
         now = time.time()
         cur_bytes = _dir_bytes(dest_dir)
         elapsed = now - start_time
@@ -420,15 +452,22 @@ def _progress_watchdog(dest_dir: Path, stop_event: threading.Event) -> None:
                 f"speed={speed:.2f} MB/s  elapsed={elapsed:.0f}s",
                 flush=True,
             )
+        elif delta != 0:
+            last_bytes = cur_bytes
+            last_change_time = now
         else:
             stall = now - last_change_time
-            if stall >= STALL_WARN_SECONDS:
+            if (
+                stall >= STALL_WARN_SECONDS
+                and now - last_warning_time >= STALL_WARN_SECONDS
+            ):
                 print(
-                    f"[download_model] Warning: no new bytes for {stall:.0f}s "
+                    f"[download_model] Note: apparent file size has not changed for {stall:.0f}s "
                     f"({cur_bytes / 1024 / 1024:.1f} MB on disk). "
-                    "Download may be stalled.",
+                    "aria2 may still be downloading into an existing file.",
                     flush=True,
                 )
+                last_warning_time = now
 
 
 def _aria2_download(
@@ -444,6 +483,7 @@ def _aria2_download(
         "--split", str(threads),
         "--max-concurrent-downloads", str(concurrent),
         "--continue=true",
+        "--file-allocation=none",
         "--auto-file-renaming=false",
         "--allow-overwrite=false",
         "--console-log-level=warn",
@@ -565,6 +605,8 @@ def download_repo(
     if complete_marker.exists() and not force:
         print(f"[download_model] {dest_dir} already complete (DOWNLOAD_COMPLETE present). Use --force to re-verify.")
         return True
+    if force:
+        complete_marker.unlink(missing_ok=True)
 
     resolved_token = _get_token(token)
 
@@ -630,10 +672,15 @@ def download_repo(
         )
 
     if success:
-        complete_marker.write_text("OK\n")
+        missing = _find_missing_downloads(filtered, dest_dir)
+        if missing:
+            complete_marker.unlink(missing_ok=True)
+            _report_missing_downloads(missing)
+            return False
         source_file.write_text(
             f"repo_id={repo_id}\nrepo_type={repo_type}\nrevision={revision}\n"
         )
+        complete_marker.write_text("OK\n")
         print(f"[download_model] ✓ Download complete → {dest_dir}")
 
     return success

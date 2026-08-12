@@ -79,6 +79,8 @@ If a download is interrupted, simply **re-run the installer** — it picks up wh
 
 A `DOWNLOAD_COMPLETE` marker file is written when all files are verified. The next run skips the download automatically.
 
+When aria2 reports success, `download_model.py` verifies that every selected regular file exists at its expected destination before writing `DOWNLOAD_COMPLETE`.
+
 ---
 
 ## Generic Downloader (`download_model.py`)
@@ -108,6 +110,7 @@ A general-purpose Hugging Face downloader that any installer in this repo can re
 - When `--allow` is **not** given: built-in media/GGUF patterns are applied (skips `*.gguf`, `*.mp4`, images, etc.)
 - When `--allow` **is** given: default ignores are skipped (so your explicit list is respected)
 - Override with `--include-default-ignores` / `--no-default-ignores`
+- Use `--no-default-ignores` when you want the complete selected repository, including files that look like media assets
 
 ### Example Invocations
 
@@ -124,7 +127,7 @@ python download_model.py "HuggingFaceH4/ultrachat_200k" "datasets" \
     --repo-type dataset --subdir ultrachat
 
 # 4. Download ACE-Step checkpoints:
-python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints
+python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints --no-default-ignores
 ```
 
 ### Importable API
