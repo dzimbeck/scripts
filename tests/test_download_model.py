@@ -94,17 +94,17 @@ class DownloadModelTests(unittest.TestCase):
             state["input_text"] = input_file.read_text()
             return False
 
-        def fake_snapshot(*_args, **_kwargs) -> bool:
-            model_path = download_model._repo_file_path(dest_dir, "weights/model.safetensors")
-            model_path.parent.mkdir(parents=True, exist_ok=True)
-            model_path.write_bytes(b"ok")
-            return True
-
         with tempfile.TemporaryDirectory() as tmpdir:
             dest_root = Path(tmpdir)
             dest_dir = dest_root / "model"
             output = io.StringIO()
             fake_hf = _fake_huggingface_hub()
+
+            def fake_snapshot(*_args, **_kwargs) -> bool:
+                model_path = download_model._repo_file_path(dest_dir, "weights/model.safetensors")
+                model_path.parent.mkdir(parents=True, exist_ok=True)
+                model_path.write_bytes(b"ok")
+                return True
 
             with contextlib.redirect_stdout(output), mock.patch.dict(
                 sys.modules, {"huggingface_hub": fake_hf}
