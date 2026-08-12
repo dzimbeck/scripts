@@ -30,11 +30,25 @@ echo Install root : %AI_DIR%
 echo.
 
 :: ----------------------------------------------------------
-:: Skip Python setup if already installed
+:: GPU detection defaults (must stay out of the skipped setup
+:: path so re-runs still install the correct PyTorch build)
+:: ----------------------------------------------------------
+set "GPU_DETECTED=0"
+set "TORCH_INDEX=https://download.pytorch.org/whl/cpu"
+
+:: ----------------------------------------------------------
+:: Skip Python setup only if the venv python actually WORKS.
+:: A leftover/corrupt python.exe from an interrupted install
+:: must not be treated as "installed" — recreate the venv.
 :: ----------------------------------------------------------
 if exist "%VENV_DIR%\Scripts\python.exe" (
-    echo [install] Virtual environment already present — skipping Python setup.
-    goto :install_acestep
+    "%VENV_DIR%\Scripts\python.exe" --version >nul 2>&1
+    if not errorlevel 1 (
+        echo [install] Virtual environment already present — skipping Python setup.
+        goto :install_acestep
+    )
+    echo [install] Found broken virtual environment (python.exe won't run) — recreating it.
+    rmdir /s /q "%VENV_DIR%"
 )
 
 :: ----------------------------------------------------------
@@ -65,6 +79,12 @@ if errorlevel 1 (
     pause & exit /b 1
 )
 set "PYTHON_EXE=%PYENV_DIR%\versions\%PYTHON_VERSION%\python.exe"
+if not exist "%PYTHON_EXE%" (
+    echo [install] ERROR: Expected Python not found at:
+    echo            %PYTHON_EXE%
+    echo [install] Run  pyenv versions  to see installed runtimes.
+    pause & exit /b 1
+)
 
 :: ----------------------------------------------------------
 :: Create virtual environment
@@ -73,6 +93,11 @@ echo [install] Creating virtual environment ...
 "%PYTHON_EXE%" -m venv "%VENV_DIR%"
 if errorlevel 1 (
     echo [install] ERROR: venv creation failed.
+    pause & exit /b 1
+)
+if not exist "%VENV_DIR%\Scripts\python.exe" (
+    echo [install] ERROR: venv was created but python.exe is missing inside it.
+    echo [install] Delete the folder "%VENV_DIR%" and re-run this installer.
     pause & exit /b 1
 )
 
@@ -109,8 +134,6 @@ call :pip_retry install --upgrade pip
 :: Detect NVIDIA GPU
 :: ----------------------------------------------------------
 echo [install] Detecting GPU ...
-set "TORCH_INDEX=https://download.pytorch.org/whl/cpu"
-set "GPU_DETECTED=0"
 nvidia-smi >nul 2>&1
 if not errorlevel 1 (
     echo [install] NVIDIA GPU detected — installing CUDA 12.6 PyTorch wheels.
