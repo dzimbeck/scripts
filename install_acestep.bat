@@ -4,8 +4,8 @@ title ACE-Step One-Click Installer
 
 :: ============================================================
 :: ACE-Step One-Click Installer
-:: Installs pyenv-win + Python 3.10 + venv locally under
-::   acestep-model\  (next to this script)
+:: Installs Python 3.10 + venv fully locally under
+::   acestep-model\  (next to this script) — no system Python needed.
 :: Downloads chosen ACE-Step checkpoint via download_model.py
 :: Generates run_acestep.bat launcher
 ::
@@ -17,9 +17,14 @@ title ACE-Step One-Click Installer
 
 set "SCRIPT_DIR=%~dp0"
 set "AI_DIR=%SCRIPT_DIR%acestep-model"
-set "PYENV_DIR=%AI_DIR%\pyenv-win"
 set "VENV_DIR=%AI_DIR%\venv"
 set "PYTHON_VERSION=3.10.11"
+set "RUNTIME_DIR=%AI_DIR%\python-%PYTHON_VERSION%"
+set "PYENV_DIR=%AI_DIR%\pyenv-win"
+set "PY_ZIP_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-embed-amd64.zip"
+set "PYENV_ZIP_URL=https://github.com/pyenv-win/pyenv-win/archive/refs/heads/master.zip"
+set "PY_EMBED_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYTHON_VERSION%-amd64.zip"
+set "GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py"
 
 echo ============================================================
 echo  ACE-Step One-Click Installer
@@ -30,41 +35,124 @@ echo Install root : %AI_DIR%
 echo.
 
 :: ----------------------------------------------------------
-:: Skip Python setup if already installed
+:: GPU detection defaults (must stay out of the skipped setup
+:: path so re-runs still install the correct PyTorch build)
+:: ----------------------------------------------------------
+set "GPU_DETECTED=0"
+set "TORCH_INDEX=https://download.pytorch.org/whl/cpu"
+
+:: ----------------------------------------------------------
+:: Skip Python setup only if the venv python actually WORKS.
+:: A leftover/corrupt python.exe from an interrupted install
+:: must not be treated as "installed" — recreate the venv.
 :: ----------------------------------------------------------
 if exist "%VENV_DIR%\Scripts\python.exe" (
-    echo [install] Virtual environment already present — skipping Python setup.
-    goto :install_acestep
-)
-
-:: ----------------------------------------------------------
-:: Install pyenv-win locally (under AI_DIR)
-:: ----------------------------------------------------------
-echo [install] Setting up pyenv-win ...
-if not exist "%PYENV_DIR%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-        "$env:PYENV_HOME='%PYENV_DIR%'; " ^
-        "Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/pyenv-win/pyenv-win/master/pyenv-win/install-pyenv-win.ps1' -UseBasicParsing | Invoke-Expression"
-    if errorlevel 1 (
-        echo [install] ERROR: pyenv-win installation failed.
-        pause & exit /b 1
+    "%VENV_DIR%\Scripts\python.exe" --version >nul 2>&1
+    if not errorlevel 1 (
+        echo [install] Virtual environment already present — skipping Python setup.
+        goto :install_acestep
     )
-) else (
-    echo [install] pyenv-win already present.
+    echo [install] Found broken virtual environment (python.exe won't run) — recreating it.
+    rmdir /s /q "%VENV_DIR%"
 )
 
-set "PATH=%PYENV_DIR%\bin;%PYENV_DIR%\shims;%PATH%"
+set "PIP_DIRECT=0"
 
 :: ----------------------------------------------------------
-:: Install Python 3.10 via pyenv-win
+:: Provision a local Python %PYTHON_VERSION% under AI_DIR.
+:: Method 1 (preferred): official embedded distribution from
+:: python.org (has venv + pip) — no pyenv needed.
+:: Method 2 (fallback): pyenv-win from GitHub, still local.
+:: Method 3 (last resort): embeddable package + get-pip.
 :: ----------------------------------------------------------
-echo [install] Installing Python %PYTHON_VERSION% ...
+set "PYTHON_EXE="
+set "PY_TMP=%AI_DIR%\_pytmp"
+if not exist "%AI_DIR%" mkdir "%AI_DIR%"
+if exist "%PY_TMP%" rmdir /s /q "%PY_TMP%"
+mkdir "%PY_TMP%"
+
+echo [install] Downloading Python %PYTHON_VERSION% (embedded) from python.org ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "(New-Object System.Net.WebClient).DownloadFile('%PY_ZIP_URL%', '%PY_TMP%\python.zip')"
+if not exist "%PY_TMP%\python.zip" (
+    echo [install] python.org download failed — trying pyenv-win from GitHub ...
+    goto :try_pyenv
+)
+
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "Expand-Archive -Path '%PY_TMP%\python.zip' -DestinationPath '%RUNTIME_DIR%' -Force"
+if not exist "%RUNTIME_DIR%\python.exe" (
+    echo [install] Extract failed — trying pyenv-win from GitHub ...
+    goto :try_pyenv
+)
+set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
+goto :make_venv
+
+:try_pyenv
+echo [install] Downloading pyenv-win (local, no system changes) ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "(New-Object System.Net.WebClient).DownloadFile('%PYENV_ZIP_URL%', '%PY_TMP%\pyenv.zip'); " ^
+    "Expand-Archive -Path '%PY_TMP%\pyenv.zip' -DestinationPath '%AI_DIR%' -Force; " ^
+    "Move-Item -Path '%AI_DIR%\pyenv-win-master' -Destination '%PYENV_DIR%' -Force"
+if not exist "%PYENV_DIR%\bin\pyenv.bat" (
+    echo [install] pyenv-win unavailable — using embeddable Python + get-pip ...
+    goto :try_embeddable
+)
+set "PYENV=%PYENV_DIR%\"
+set "PYENV_ROOT=%PYENV_DIR%\"
+set "PYENV_HOME=%PYENV_DIR%\"
+set "PATH=%PYENV_DIR%\bin;%PYENV_DIR%\shims;%PATH%"
 call "%PYENV_DIR%\bin\pyenv.bat" install %PYTHON_VERSION% --skip-existing
 if errorlevel 1 (
-    echo [install] ERROR: Python %PYTHON_VERSION% installation failed.
-    pause & exit /b 1
+    echo [install] pyenv install failed — using embeddable Python + get-pip ...
+    goto :try_embeddable
 )
 set "PYTHON_EXE=%PYENV_DIR%\versions\%PYTHON_VERSION%\python.exe"
+if not exist "%PYTHON_EXE%" (
+    echo [install] pyenv did not produce python.exe — using embeddable Python + get-pip ...
+    goto :try_embeddable
+)
+goto :make_venv
+
+:try_embeddable
+echo [install] Downloading embeddable Python %PYTHON_VERSION% ...
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "(New-Object System.Net.WebClient).DownloadFile('%PY_EMBED_URL%', '%PY_TMP%\python.zip'); " ^
+    "Expand-Archive -Path '%PY_TMP%\python.zip' -DestinationPath '%RUNTIME_DIR%' -Force"
+if not exist "%RUNTIME_DIR%\python.exe" (
+    echo [install] ERROR: could not obtain a local Python runtime.
+    echo [install] Check your internet connection / firewall and re-run.
+    pause & exit /b 1
+)
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "(New-Object System.Net.WebClient).DownloadFile('%GET_PIP_URL%', '%RUNTIME_DIR%\get-pip.py')"
+if not exist "%RUNTIME_DIR%\get-pip.py" (
+    echo [install] ERROR: get-pip.py download failed.
+    pause & exit /b 1
+)
+:: Enable site-packages + pip inside the embeddable runtime
+for %%F in ("%RUNTIME_DIR%\python*._pth") do (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+        "(Get-Content '%%~fF') -replace '#\s*import site','import site' | Set-Content '%%~fF'"
+)
+"%RUNTIME_DIR%\python.exe" "%RUNTIME_DIR%\get-pip.py" >nul 2>&1
+if errorlevel 1 (
+    echo [install] ERROR: get-pip failed inside embeddable runtime.
+    pause & exit /b 1
+)
+set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
+set "PIP_DIRECT=1"
+goto :install_acestep
+
+:make_venv
+if not exist "%PYTHON_EXE%" (
+    echo [install] ERROR: local Python not found at %PYTHON_EXE%
+    pause & exit /b 1
+)
+echo [install] Local Python ready: %PYTHON_EXE%
 
 :: ----------------------------------------------------------
 :: Create virtual environment
@@ -75,8 +163,14 @@ if errorlevel 1 (
     echo [install] ERROR: venv creation failed.
     pause & exit /b 1
 )
+if not exist "%VENV_DIR%\Scripts\python.exe" (
+    echo [install] ERROR: venv was created but python.exe is missing inside it.
+    echo [install] Delete the folder "%VENV_DIR%" and re-run this installer.
+    pause & exit /b 1
+)
 
 :install_acestep
+if exist "%PY_TMP%" rmdir /s /q "%PY_TMP%" 2>nul
 :: ----------------------------------------------------------
 :: Helper: pip with retry (3 attempts)
 :: pip_retry is called as: call :pip_retry <args>
@@ -87,7 +181,11 @@ goto :skip_pip_retry_def
     set "_PIP_ARGS=%*"
     for /L %%i in (1,1,3) do (
         echo [install] pip !_PIP_ARGS! (attempt %%i)
-        call "%VENV_DIR%\Scripts\pip.exe" !_PIP_ARGS!
+        if "!PIP_DIRECT!"=="1" (
+            call "%RUNTIME_DIR%\python.exe" -m pip !_PIP_ARGS!
+        ) else (
+            call "%VENV_DIR%\Scripts\pip.exe" !_PIP_ARGS!
+        )
         if not errorlevel 1 goto :pip_retry_ok
         echo [install] pip attempt %%i failed — retrying in 3s ...
         timeout /t 3 >nul
@@ -99,6 +197,8 @@ goto :skip_pip_retry_def
     goto :eof
 
 :skip_pip_retry_def
+set "PIP_TARGET_PY=%VENV_DIR%\Scripts\python.exe"
+if "!PIP_DIRECT!"=="1" set "PIP_TARGET_PY=%RUNTIME_DIR%\python.exe"
 
 :: ----------------------------------------------------------
 :: Upgrade pip
@@ -109,8 +209,6 @@ call :pip_retry install --upgrade pip
 :: Detect NVIDIA GPU
 :: ----------------------------------------------------------
 echo [install] Detecting GPU ...
-set "TORCH_INDEX=https://download.pytorch.org/whl/cpu"
-set "GPU_DETECTED=0"
 nvidia-smi >nul 2>&1
 if not errorlevel 1 (
     echo [install] NVIDIA GPU detected — installing CUDA 12.6 PyTorch wheels.
@@ -144,7 +242,7 @@ call :pip_retry install huggingface_hub
 :: Skip if already importable
 :: ----------------------------------------------------------
 echo [install] Checking if ACE-Step is already installed ...
-"%VENV_DIR%\Scripts\python.exe" -c "import acestep" >nul 2>&1
+"!PIP_TARGET_PY!" -c "import acestep" >nul 2>&1
 if not errorlevel 1 (
     echo [install] ACE-Step already installed — skipping.
     goto :pick_model
@@ -223,7 +321,7 @@ echo.
 :: ----------------------------------------------------------
 :: Download checkpoint via generalized download_model.py
 :: ----------------------------------------------------------
-"%VENV_DIR%\Scripts\python.exe" "%SCRIPT_DIR%download_model.py" ^
+"!PIP_TARGET_PY!" "%SCRIPT_DIR%download_model.py" ^
     "!REPO_ID!" "%AI_DIR%" ^
     --subdir "!CHECKPOINT_SUBDIR!"
 
