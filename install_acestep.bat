@@ -65,6 +65,8 @@ if exist "%RUNTIME_DIR%\python.exe" (
     if not errorlevel 1 (
         echo [install] Embeddable Python runtime already present - skipping Python setup.
         set "PIP_DIRECT=1"
+        set "DIRECT_PY=%RUNTIME_DIR%\python.exe"
+        set "DIRECT_DIR=%RUNTIME_DIR%\"
         goto :install_acestep
     )
 )
@@ -168,6 +170,8 @@ if errorlevel 1 (
 )
 set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
 set "PIP_DIRECT=1"
+set "DIRECT_PY=%RUNTIME_DIR%\python.exe"
+set "DIRECT_DIR=%RUNTIME_DIR%\"
 goto :install_acestep
 
 :make_venv
@@ -185,7 +189,7 @@ echo [install] Local Python ready: %PYTHON_EXE%
 "%PYTHON_EXE%" -c "import venv" >nul 2>&1
 if errorlevel 1 (
     echo [install] This Python runtime has no venv module - using it directly instead.
-    goto :try_embeddable
+    goto :use_runtime_direct
 )
 echo [install] Creating virtual environment ...
 "%PYTHON_EXE%" -m venv "%VENV_DIR%"
@@ -198,6 +202,23 @@ if not exist "%VENV_DIR%\Scripts\python.exe" (
     echo [install] Delete the folder "%VENV_DIR%" and re-run this installer.
     pause & exit /b 1
 )
+goto :install_acestep
+
+:: Use the runtime directly (no venv): make sure pip is available.
+:use_runtime_direct
+"%PYTHON_EXE%" -m pip --version >nul 2>&1
+if not errorlevel 1 goto :runtime_direct_ok
+"%PYTHON_EXE%" -m ensurepip --default-pip >nul 2>&1
+"%PYTHON_EXE%" -m pip --version >nul 2>&1
+if errorlevel 1 (
+    echo [install] Runtime has no pip either - falling back to embeddable + get-pip ...
+    goto :try_embeddable
+)
+:runtime_direct_ok
+set "PIP_DIRECT=1"
+set "DIRECT_PY=%PYTHON_EXE%"
+for %%D in ("%PYTHON_EXE%") do set "DIRECT_DIR=%%~dpD"
+goto :install_acestep
 
 :install_acestep
 if exist "%PY_TMP%" rmdir /s /q "%PY_TMP%" 2>nul
@@ -212,7 +233,7 @@ goto :skip_pip_retry_def
     for /L %%i in (1,1,3) do (
         echo [install] Running: pip !_PIP_ARGS! attempt %%i of 3
         if "!PIP_DIRECT!"=="1" (
-            call "%RUNTIME_DIR%\python.exe" -m pip !_PIP_ARGS!
+            call "!DIRECT_PY!" -m pip !_PIP_ARGS!
         ) else (
             call "%VENV_DIR%\Scripts\pip.exe" !_PIP_ARGS!
         )
@@ -228,7 +249,7 @@ goto :skip_pip_retry_def
 
 :skip_pip_retry_def
 set "PIP_TARGET_PY=%VENV_DIR%\Scripts\python.exe"
-if "!PIP_DIRECT!"=="1" set "PIP_TARGET_PY=%RUNTIME_DIR%\python.exe"
+if "!PIP_DIRECT!"=="1" set "PIP_TARGET_PY=!DIRECT_PY!"
 
 :: ----------------------------------------------------------
 :: Upgrade pip
@@ -377,7 +398,7 @@ if "!GPU_DETECTED!"=="0" (
 set "LAUNCHER=%SCRIPT_DIR%run_acestep.bat"
 set "CHECKPOINT_PATH=%AI_DIR%\!CHECKPOINT_SUBDIR!"
 set "ENV_PATH=%VENV_DIR%\Scripts"
-if "!PIP_DIRECT!"=="1" set "ENV_PATH=%RUNTIME_DIR%;%RUNTIME_DIR%\Scripts"
+if "!PIP_DIRECT!"=="1" set "ENV_PATH=!DIRECT_DIR!;!DIRECT_DIR!Scripts"
 
 (
     echo @echo off
