@@ -289,7 +289,8 @@ call :pip_retry install torch torchvision torchaudio --index-url !TORCH_INDEX!
 call :pip_retry install huggingface_hub
 
 :: ----------------------------------------------------------
-:: Install ACE-Step from GitHub (includes all core deps)
+:: Install ACE-Step from the GitHub zip archive (no git needed -
+:: pip downloads the source zip over plain HTTPS and builds it).
 :: Skip if already importable
 :: ----------------------------------------------------------
 echo [install] Checking if ACE-Step is already installed ...
@@ -299,8 +300,8 @@ if not errorlevel 1 (
     goto :pick_model
 )
 
-echo [install] Installing ACE-Step from GitHub ...
-call :pip_retry install "git+https://github.com/ace-step/ACE-Step.git"
+echo [install] Installing ACE-Step from GitHub (zip archive, no git required) ...
+call :pip_retry install "https://github.com/ace-step/ACE-Step/archive/refs/heads/main.zip"
 
 :: ----------------------------------------------------------
 :: Install Gradio (web UI)
