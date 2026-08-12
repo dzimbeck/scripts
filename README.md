@@ -43,7 +43,7 @@ Downloads and configures [ACE-Step](https://github.com/ace-step/ACE-Step) for lo
 1. Installs **Python 3.10** locally under `acestep-model\` (official python.org NuGet build, with pyenv-win and embeddable-zip fallbacks)
 2. Creates an isolated virtual environment
 3. Detects NVIDIA GPU and installs CUDA 12.6 or CPU-only PyTorch
-4. Installs ACE-Step from GitHub (`pip install https://...main.zip`) plus `gradio`
+4. Installs ACE-Step from GitHub (`pip install https://...main.zip`) plus `gradio==5.49.1`
 5. Prompts you to choose a checkpoint:
 
    | Option | Repo ID | Size | Notes |
