@@ -5,7 +5,7 @@ title FLUX.2 One-Click Installer
 :: ============================================================
 :: FLUX.2 One-Click Installer
 :: Installs Python 3.11 + venv fully locally under
-::   flux2-model\  (next to this script) — no system Python needed.
+::   flux2-model\  (next to this script) - no system Python needed.
 :: Downloads chosen FLUX.2 checkpoint via download_model.py
 :: Generates run_flux2.bat launcher
 :: ============================================================
@@ -34,15 +34,15 @@ echo.
 :: ----------------------------------------------------------
 :: Skip Python setup only if the venv python actually WORKS.
 :: A leftover/corrupt python.exe from an interrupted install
-:: must not be treated as "installed" — recreate the venv.
+:: must not be treated as "installed" - recreate the venv.
 :: ----------------------------------------------------------
 if exist "%VENV_DIR%\Scripts\python.exe" (
     "%VENV_DIR%\Scripts\python.exe" --version >nul 2>&1
     if not errorlevel 1 (
-        echo [install] Virtual environment already present — skipping Python setup.
+        echo [install] Virtual environment already present - skipping Python setup.
         goto :pip_section
     )
-    echo [install] Found broken virtual environment (python.exe won't run) — recreating it.
+    echo [install] Found broken virtual environment - recreating it.
     rmdir /s /q "%VENV_DIR%"
 )
 
@@ -51,7 +51,7 @@ set "PIP_DIRECT=0"
 :: ----------------------------------------------------------
 :: Provision a local Python %PYTHON_VERSION% under AI_DIR.
 :: Method 1 (preferred): official embedded distribution from
-:: python.org (has venv + pip) — no pyenv needed.
+:: python.org (has venv + pip) - no pyenv needed.
 :: Method 2 (fallback): pyenv-win from GitHub, still local.
 :: Method 3 (last resort): embeddable package + get-pip.
 :: ----------------------------------------------------------
@@ -66,14 +66,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
     "(New-Object System.Net.WebClient).DownloadFile('%PY_ZIP_URL%', '%PY_TMP%\python.zip')"
 if not exist "%PY_TMP%\python.zip" (
-    echo [install] python.org download failed — trying pyenv-win from GitHub ...
+    echo [install] python.org download failed - trying pyenv-win from GitHub ...
     goto :try_pyenv
 )
 
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "Expand-Archive -Path '%PY_TMP%\python.zip' -DestinationPath '%RUNTIME_DIR%' -Force"
 if not exist "%RUNTIME_DIR%\python.exe" (
-    echo [install] Extract failed — trying pyenv-win from GitHub ...
+    echo [install] Extract failed - trying pyenv-win from GitHub ...
     goto :try_pyenv
 )
 set "PYTHON_EXE=%RUNTIME_DIR%\python.exe"
@@ -87,7 +87,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
     "Expand-Archive -Path '%PY_TMP%\pyenv.zip' -DestinationPath '%AI_DIR%' -Force; " ^
     "Move-Item -Path '%AI_DIR%\pyenv-win-master' -Destination '%PYENV_DIR%' -Force"
 if not exist "%PYENV_DIR%\bin\pyenv.bat" (
-    echo [install] pyenv-win unavailable — using embeddable Python + get-pip ...
+    echo [install] pyenv-win unavailable - using embeddable Python + get-pip ...
     goto :try_embeddable
 )
 set "PYENV=%PYENV_DIR%\"
@@ -96,12 +96,12 @@ set "PYENV_HOME=%PYENV_DIR%\"
 set "PATH=%PYENV_DIR%\bin;%PYENV_DIR%\shims;%PATH%"
 call "%PYENV_DIR%\bin\pyenv.bat" install %PYTHON_VERSION% --skip-existing
 if errorlevel 1 (
-    echo [install] pyenv install failed — using embeddable Python + get-pip ...
+    echo [install] pyenv install failed - using embeddable Python + get-pip ...
     goto :try_embeddable
 )
 set "PYTHON_EXE=%PYENV_DIR%\versions\%PYTHON_VERSION%\python.exe"
 if not exist "%PYTHON_EXE%" (
-    echo [install] pyenv did not produce python.exe — using embeddable Python + get-pip ...
+    echo [install] pyenv did not produce python.exe - using embeddable Python + get-pip ...
     goto :try_embeddable
 )
 goto :make_venv
@@ -170,14 +170,14 @@ goto :skip_pip_retry_def
 :pip_retry
     set "_PIP_CMD=%*"
     for /L %%i in (1,1,3) do (
-        echo [install] Running: pip !_PIP_CMD! (attempt %%i)
+        echo [install] Running: pip !_PIP_CMD! attempt %%i of 3
         if "!PIP_DIRECT!"=="1" (
             call "%RUNTIME_DIR%\python.exe" -m pip !_PIP_CMD!
         ) else (
             call "%VENV_DIR%\Scripts\pip.exe" !_PIP_CMD!
         )
         if not errorlevel 1 goto :pip_retry_ok
-        echo [install] pip attempt %%i failed — retrying ...
+        echo [install] pip attempt %%i failed - retrying ...
         timeout /t 3 >nul
     )
     echo [install] ERROR: pip failed after 3 attempts: !_PIP_CMD!
@@ -202,10 +202,10 @@ echo [install] Detecting GPU ...
 set "TORCH_INDEX=https://download.pytorch.org/whl/cpu"
 nvidia-smi >nul 2>&1
 if not errorlevel 1 (
-    echo [install] NVIDIA GPU detected — installing CUDA 12.4 PyTorch wheels.
+    echo [install] NVIDIA GPU detected - installing CUDA 12.4 PyTorch wheels.
     set "TORCH_INDEX=https://download.pytorch.org/whl/cu124"
 ) else (
-    echo [install] No NVIDIA GPU detected — installing CPU-only PyTorch.
+    echo [install] No NVIDIA GPU detected - installing CPU-only PyTorch.
     echo [install] Note: FLUX.2 inference will be slow without a GPU.
 )
 
@@ -265,14 +265,14 @@ if "!CHOICE!"=="4" (
 )
 
 if not defined REPO_ID (
-    echo [install] Invalid choice. Using default (FLUX.2-klein-4B).
+    echo [install] Invalid choice. Using default FLUX.2-klein-4B.
     set "REPO_ID=black-forest-labs/FLUX.2-klein-4B"
     set "MODEL_NAME=FLUX.2-klein-4B"
 )
 
 echo.
 echo [install] Downloading !MODEL_NAME! from !REPO_ID! ...
-echo [install] (Download is resumable — you can Ctrl+C and restart safely.)
+echo [install] Download is resumable - you can Ctrl+C and restart safely.
 echo.
 
 :: ----------------------------------------------------------
@@ -297,7 +297,7 @@ set "LAUNCHER=%SCRIPT_DIR%run_flux2.bat"
     echo setlocal
     echo title FLUX.2 - !MODEL_NAME!
     echo call "%VENV_DIR%\Scripts\activate.bat"
-    echo python -c "from diffusers import FluxPipeline; import torch; pipe = FluxPipeline.from_pretrained('%AI_DIR%\model', torch_dtype=torch.bfloat16); pipe.to('cuda' if torch.cuda.is_available() else 'cpu'); print('FLUX.2 model loaded! Use pipe(...) to generate images.')"
+    echo python -c "from diffusers import FluxPipeline; import torch; pipe = FluxPipeline.from_pretrained^('%AI_DIR%\model', torch_dtype=torch.bfloat16^); pipe.to^('cuda' if torch.cuda.is_available^(^) else 'cpu'^); print^('FLUX.2 model loaded! Use pipe^(...^) to generate images.'^)"
     echo cmd /k
 ) > "!LAUNCHER!"
 
