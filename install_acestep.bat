@@ -291,7 +291,7 @@ if not errorlevel 1 (
 :: Windows (pyproject.toml): torch==2.7.1+cu128,
 :: torchvision==0.22.1+cu128, torchaudio==2.7.1+cu128
 :: ----------------------------------------------------------
-call :pip_retry install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 --index-url !TORCH_INDEX!
+call :pip_retry install torch==2.7.1+cu128 torchvision==0.22.1+cu128 torchaudio==2.7.1+cu128 --index-url !TORCH_INDEX!
 
 :: ----------------------------------------------------------
 :: Install huggingface_hub for download_model.py
@@ -398,12 +398,17 @@ set "CHECKPOINT_SUBDIR=checkpoints\!MODEL_NAME!"
 :: expects - no re-download needed.
 :: ----------------------------------------------------------
 if exist "%AI_DIR%\checkpoints\DOWNLOAD_COMPLETE" (
-    if not exist "%AI_DIR%\checkpoints\!MODEL_NAME!\DOWNLOAD_COMPLETE" (
-        echo [install] Migrating previously downloaded checkpoint into checkpoints\!MODEL_NAME!\ ...
-        move "%AI_DIR%\checkpoints" "%AI_DIR%\_ckpt_migrate" >nul
-        mkdir "%AI_DIR%\checkpoints"
-        move "%AI_DIR%\_ckpt_migrate" "%AI_DIR%\checkpoints\!MODEL_NAME!" >nul
+    rem Identify which model the old flat download actually was from its
+    rem MODEL_SOURCE.txt marker (repo_id=ACE-Step/<model_name>), falling
+    rem back to the currently selected model if the marker is missing.
+    set "OLD_MODEL=!MODEL_NAME!"
+    if exist "%AI_DIR%\checkpoints\MODEL_SOURCE.txt" (
+        for /f "tokens=2 delims=/" %%A in ('findstr /b /c:"repo_id=" "%AI_DIR%\checkpoints\MODEL_SOURCE.txt"') do set "OLD_MODEL=%%A"
     )
+    echo [install] Migrating previously downloaded checkpoint into checkpoints\!OLD_MODEL!\ ...
+    move "%AI_DIR%\checkpoints" "%AI_DIR%\_ckpt_migrate" >nul
+    mkdir "%AI_DIR%\checkpoints"
+    move "%AI_DIR%\_ckpt_migrate" "%AI_DIR%\checkpoints\!OLD_MODEL!" >nul
 )
 
 :: Check if this checkpoint was already downloaded
