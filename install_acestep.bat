@@ -1,24 +1,29 @@
 @echo off
 setlocal EnableDelayedExpansion
-title ACE-Step One-Click Installer
+title ACE-Step 1.5 One-Click Installer
 
 :: ============================================================
-:: ACE-Step One-Click Installer
-:: Installs Python 3.10 + venv fully locally under
+:: ACE-Step 1.5 One-Click Installer
+:: Installs Python 3.11 + venv fully locally under
 ::   acestep-model\  (next to this script) - no system Python needed.
+:: ACE-Step 1.5 requires Python 3.11-3.12; its prebuilt Windows
+:: wheels (flash-attn / triton-windows for nano-vllm) are cp311,
+:: so this installer uses Python 3.11.
 :: Downloads chosen ACE-Step checkpoint via download_model.py
 :: Generates run_acestep.bat launcher
 ::
-:: ACE-Step: https://github.com/ace-step/ACE-Step
-:: HF org:   https://huggingface.co/ACE-Step
-:: License:  Code - Apache-2.0
-::           Model weights - see model card on HF
+:: ACE-Step 1.5: https://github.com/ace-step/ACE-Step-1.5
+:: HF org:       https://huggingface.co/ACE-Step
+:: License:      Code - MIT
+::               Model weights - see model card on HF
 :: ============================================================
 
 set "SCRIPT_DIR=%~dp0"
 set "AI_DIR=%SCRIPT_DIR%acestep-model"
 set "VENV_DIR=%AI_DIR%\venv"
-set "PYTHON_VERSION=3.10.11"
+set "SRC_DIR=%AI_DIR%\ACE-Step-1.5"
+set "ACESTEP_ZIP_URL=https://github.com/ace-step/ACE-Step-1.5/archive/refs/heads/main.zip"
+set "PYTHON_VERSION=3.11.9"
 set "RUNTIME_DIR=%AI_DIR%\python-%PYTHON_VERSION%"
 set "PYENV_DIR=%AI_DIR%\pyenv-win"
 set "PY_NUGET_URL=https://www.nuget.org/api/v2/package/python/%PYTHON_VERSION%"
@@ -27,7 +32,7 @@ set "PY_EMBED_URL=https://www.python.org/ftp/python/%PYTHON_VERSION%/python-%PYT
 set "GET_PIP_URL=https://bootstrap.pypa.io/get-pip.py"
 
 echo ============================================================
-echo  ACE-Step One-Click Installer
+echo  ACE-Step 1.5 One-Click Installer
 echo  Music/Audio Generation Foundation Model
 echo ============================================================
 echo.
@@ -36,23 +41,27 @@ echo.
 
 :: ----------------------------------------------------------
 :: GPU detection defaults (must stay out of the skipped setup
-:: path so re-runs still install the correct PyTorch build)
+:: path so re-runs still set the correct launcher flags).
+:: ACE-Step 1.5 pins torch==2.7.1+cu128 on Windows (see its
+:: pyproject.toml), so the cu128 wheels are always installed -
+:: they also run fine on CPU-only machines.
 :: ----------------------------------------------------------
 set "GPU_DETECTED=0"
-set "TORCH_INDEX=https://download.pytorch.org/whl/cpu"
+set "TORCH_INDEX=https://download.pytorch.org/whl/cu128"
 
 :: ----------------------------------------------------------
-:: Skip Python setup only if the venv python actually WORKS.
-:: A leftover/corrupt python.exe from an interrupted install
-:: must not be treated as "installed" - recreate the venv.
+:: Skip Python setup only if the venv python actually WORKS
+:: and is the Python 3.11 that ACE-Step 1.5 needs. A leftover
+:: 3.10 venv from the old installer (or a corrupt python.exe)
+:: must be recreated.
 :: ----------------------------------------------------------
 if exist "%VENV_DIR%\Scripts\python.exe" (
-    "%VENV_DIR%\Scripts\python.exe" --version >nul 2>&1
+    "%VENV_DIR%\Scripts\python.exe" -c "import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) else 1)" >nul 2>&1
     if not errorlevel 1 (
         echo [install] Virtual environment already present - skipping Python setup.
         goto :install_acestep
     )
-    echo [install] Found broken virtual environment - recreating it.
+    echo [install] Found old/broken virtual environment - recreating it with Python %PYTHON_VERSION%.
     rmdir /s /q "%VENV_DIR%"
 )
 
@@ -257,31 +266,32 @@ if "!PIP_DIRECT!"=="1" set "PIP_TARGET_PY=!DIRECT_PY!"
 call :pip_retry install --upgrade pip
 
 :: ----------------------------------------------------------
-:: Detect NVIDIA GPU
+:: Detect NVIDIA GPU (only affects launcher flags - ACE-Step
+:: 1.5 pins the cu128 PyTorch build on Windows either way)
 :: ----------------------------------------------------------
 echo [install] Detecting GPU ...
 nvidia-smi >nul 2>&1
 if not errorlevel 1 (
-    echo [install] NVIDIA GPU detected - installing CUDA 12.6 PyTorch wheels.
-    echo [install] ACE-Step recommends cu126 per their Windows installation guide.
-    set "TORCH_INDEX=https://download.pytorch.org/whl/cu126"
+    echo [install] NVIDIA GPU detected.
     set "GPU_DETECTED=1"
 ) else (
-    echo [install] No NVIDIA GPU detected - installing CPU-only PyTorch.
+    echo [install] No NVIDIA GPU detected.
     echo.
     echo  *** WARNING ***
     echo  ACE-Step is designed for CUDA-capable GPUs.
     echo  CPU generation will be extremely slow - minutes per clip.
-    echo  Low-VRAM / no-GPU flags will be set in the launcher automatically:
-    echo    --cpu_offload true
+    echo  CPU offload will be set in the launcher automatically:
+    echo    --offload_to_cpu true
     echo  ***************
     echo.
 )
 
 :: ----------------------------------------------------------
-:: Install PyTorch (ACE-Step README: cu126 for Windows/NVIDIA)
+:: Install PyTorch exactly as pinned by ACE-Step 1.5 for
+:: Windows (pyproject.toml): torch==2.7.1+cu128,
+:: torchvision==0.22.1+cu128, torchaudio==2.7.1+cu128
 :: ----------------------------------------------------------
-call :pip_retry install torch torchvision torchaudio --index-url !TORCH_INDEX!
+call :pip_retry install torch==2.7.1+cu128 torchvision==0.22.1+cu128 torchaudio==2.7.1+cu128 --index-url !TORCH_INDEX!
 
 :: ----------------------------------------------------------
 :: Install huggingface_hub for download_model.py
@@ -289,9 +299,14 @@ call :pip_retry install torch torchvision torchaudio --index-url !TORCH_INDEX!
 call :pip_retry install huggingface_hub
 
 :: ----------------------------------------------------------
-:: Install ACE-Step from the GitHub zip archive (no git needed -
-:: pip downloads the source zip over plain HTTPS and builds it).
-:: Skip if already importable
+:: Install ACE-Step 1.5 from the GitHub zip archive (no git
+:: needed). The source is extracted locally because its
+:: vendored nano-vllm package (acestep\third_parts\nano-vllm)
+:: is not on PyPI and must be installed from the source tree
+:: before ACE-Step itself. All remaining dependency versions
+:: (gradio==6.2.0, transformers, torchcodec, ...) come from
+:: ACE-Step's own pyproject.toml pins.
+:: Skip if already importable.
 :: ----------------------------------------------------------
 echo [install] Checking if ACE-Step is already installed ...
 "!PIP_TARGET_PY!" -c "import acestep" >nul 2>&1
@@ -300,21 +315,38 @@ if not errorlevel 1 (
     goto :pick_model
 )
 
-echo [install] Installing ACE-Step from GitHub (zip archive, no git required) ...
-call :pip_retry install "https://github.com/ace-step/ACE-Step/archive/refs/heads/main.zip"
+echo [install] Downloading ACE-Step 1.5 source (zip archive, no git required) ...
+if exist "%SRC_DIR%" rmdir /s /q "%SRC_DIR%"
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+    "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; " ^
+    "(New-Object System.Net.WebClient).DownloadFile('%ACESTEP_ZIP_URL%', '%AI_DIR%\acestep-src.zip'); " ^
+    "Expand-Archive -Path '%AI_DIR%\acestep-src.zip' -DestinationPath '%AI_DIR%\_srctmp' -Force; " ^
+    "Move-Item -Path '%AI_DIR%\_srctmp\ACE-Step-1.5-main' -Destination '%SRC_DIR%' -Force"
+del "%AI_DIR%\acestep-src.zip" 2>nul
+if exist "%AI_DIR%\_srctmp" rmdir /s /q "%AI_DIR%\_srctmp"
+if not exist "%SRC_DIR%\pyproject.toml" (
+    echo [install] ERROR: could not download/extract the ACE-Step 1.5 source.
+    pause & exit /b 1
+)
 
-:: ----------------------------------------------------------
-:: Install Gradio (web UI) - ACE-Step requires exactly 5.49.1
-:: ----------------------------------------------------------
-call :pip_retry install gradio==5.49.1
+echo [install] Installing vendored nano-vllm (required by ACE-Step 1.5) ...
+call :pip_retry install "%SRC_DIR%\acestep\third_parts\nano-vllm" --extra-index-url !TORCH_INDEX!
+
+echo [install] Installing ACE-Step 1.5 and its pinned dependencies ...
+call :pip_retry install "%SRC_DIR%" --extra-index-url !TORCH_INDEX!
 
 :pick_model
 :: ----------------------------------------------------------
 :: Model / checkpoint selection
+:: ACE-Step 1.5 expects each model in its own subfolder:
+::   checkpoints\<model_name>\
+:: Core components (vae, Qwen3-Embedding-0.6B text encoder,
+:: acestep-v15-turbo, acestep-5Hz-lm-1.7B) are auto-downloaded
+:: by ACE-Step on first launch if missing.
 :: ----------------------------------------------------------
 echo.
 echo ============================================================
-echo  ACE-Step Checkpoint Selection
+echo  ACE-Step 1.5 Checkpoint Selection
 echo ============================================================
 echo.
 echo  Available checkpoints (all on https://huggingface.co/ACE-Step):
@@ -328,8 +360,11 @@ echo.
 echo  [3] acestep-v15-turbo-continuous   ~14 GB  (fast generation variant)
 echo      Turbo checkpoint focused on lower-latency generation
 echo.
+echo  NOTE: shared components (VAE, text encoder, language model)
+echo  are downloaded automatically by ACE-Step on first launch.
+echo.
 echo  VRAM guidance:
-echo    8 GB+  : Any option with --cpu_offload true (slower)
+echo    8 GB+  : Any option with CPU offload (slower)
 echo    12 GB+ : Base model, standard quality
 echo    16 GB+ : Base model, full speed
 echo.
@@ -339,24 +374,41 @@ if "!CHOICE!"=="" set "CHOICE=1"
 if "!CHOICE!"=="1" (
     set "REPO_ID=ACE-Step/acestep-v15-base"
     set "MODEL_NAME=acestep-v15-base"
-    set "CHECKPOINT_SUBDIR=checkpoints"
 )
 if "!CHOICE!"=="2" (
     set "REPO_ID=ACE-Step/acestep-v15-sft"
     set "MODEL_NAME=acestep-v15-sft"
-    set "CHECKPOINT_SUBDIR=checkpoints"
 )
 if "!CHOICE!"=="3" (
     set "REPO_ID=ACE-Step/acestep-v15-turbo-continuous"
     set "MODEL_NAME=acestep-v15-turbo-continuous"
-    set "CHECKPOINT_SUBDIR=checkpoints"
 )
 
 if not defined REPO_ID (
     echo [install] Invalid choice. Using default acestep-v15-base.
     set "REPO_ID=ACE-Step/acestep-v15-base"
     set "MODEL_NAME=acestep-v15-base"
-    set "CHECKPOINT_SUBDIR=checkpoints"
+)
+set "CHECKPOINT_SUBDIR=checkpoints\!MODEL_NAME!"
+
+:: ----------------------------------------------------------
+:: Migrate checkpoints downloaded by an older version of this
+:: installer (which placed model files flat in checkpoints\)
+:: into the checkpoints\<model_name>\ layout ACE-Step 1.5
+:: expects - no re-download needed.
+:: ----------------------------------------------------------
+if exist "%AI_DIR%\checkpoints\DOWNLOAD_COMPLETE" (
+    rem Identify which model the old flat download actually was from its
+    rem MODEL_SOURCE.txt marker (repo_id=ACE-Step/<model_name>), falling
+    rem back to the currently selected model if the marker is missing.
+    set "OLD_MODEL=!MODEL_NAME!"
+    if exist "%AI_DIR%\checkpoints\MODEL_SOURCE.txt" (
+        for /f "tokens=2 delims=/" %%A in ('findstr /b /c:"repo_id=" "%AI_DIR%\checkpoints\MODEL_SOURCE.txt"') do set "OLD_MODEL=%%A"
+    )
+    echo [install] Migrating previously downloaded checkpoint into checkpoints\!OLD_MODEL!\ ...
+    move "%AI_DIR%\checkpoints" "%AI_DIR%\_ckpt_migrate" >nul
+    mkdir "%AI_DIR%\checkpoints"
+    move "%AI_DIR%\_ckpt_migrate" "%AI_DIR%\checkpoints\!OLD_MODEL!" >nul
 )
 
 :: Check if this checkpoint was already downloaded
@@ -387,41 +439,43 @@ if errorlevel 1 (
 
 :generate_launcher
 :: ----------------------------------------------------------
-:: Determine GPU flags for the launcher
+:: Determine GPU flags for the launcher (ACE-Step 1.5 flags)
 :: ----------------------------------------------------------
-set "GPU_FLAGS=--bf16 true"
+set "GPU_FLAGS="
 if "!GPU_DETECTED!"=="0" (
-    set "GPU_FLAGS=--bf16 false --cpu_offload true"
+    set "GPU_FLAGS=--offload_to_cpu true"
 )
 
 :: ----------------------------------------------------------
 :: Generate run_acestep.bat launcher
 :: ----------------------------------------------------------
 set "LAUNCHER=%SCRIPT_DIR%run_acestep.bat"
-set "CHECKPOINT_PATH=%AI_DIR%\!CHECKPOINT_SUBDIR!"
+set "CHECKPOINT_ROOT=%AI_DIR%\checkpoints"
 set "ENV_PATH=%VENV_DIR%\Scripts"
 if "!PIP_DIRECT!"=="1" set "ENV_PATH=!DIRECT_DIR!;!DIRECT_DIR!Scripts"
 
 (
     echo @echo off
     echo setlocal
-    echo title ACE-Step - !MODEL_NAME!
+    echo title ACE-Step 1.5 - !MODEL_NAME!
     echo.
     echo :: Put the installed Python environment on PATH
     echo set "PATH=!ENV_PATH!;%%PATH%%"
     echo.
-    echo :: Launch ACE-Step Gradio GUI
+    echo :: Point ACE-Step at the locally downloaded checkpoints.
+    echo :: Missing shared components (VAE, text encoder, LM^) are
+    echo :: auto-downloaded here on first launch.
+    echo set "ACESTEP_CHECKPOINTS_DIR=!CHECKPOINT_ROOT!"
+    echo.
+    echo :: Launch ACE-Step 1.5 Gradio GUI
     echo :: Flags:
-    echo ::   --checkpoint_path  : local checkpoint directory
+    echo ::   --config_path      : DiT model to load (folder name under checkpoints\^)
     echo ::   --port             : Gradio server port
-    echo ::   --bf16             : use bfloat16 precision - faster on GPU only
-    echo ::   --cpu_offload      : offload weights to CPU to save VRAM
-    echo ::   --torch_compile    : compile model for extra speed - optional
-    echo ::   --overlapped_decode: faster decoding - optional
-    echo echo Starting ACE-Step on http://127.0.0.1:7865
+    echo ::   --offload_to_cpu   : offload weights to CPU to save VRAM
+    echo echo Starting ACE-Step on http://127.0.0.1:7860
     echo echo Close this window to stop the server.
     echo echo.
-    echo acestep --checkpoint_path "!CHECKPOINT_PATH!" --port 7865 !GPU_FLAGS!
+    echo acestep --config_path !MODEL_NAME! --port 7860 !GPU_FLAGS!
     echo.
     echo pause
 ) > "!LAUNCHER!"
@@ -431,11 +485,11 @@ echo ============================================================
 echo  Installation complete!
 echo ============================================================
 echo.
-echo  Model location : !CHECKPOINT_PATH!
+echo  Model location : !CHECKPOINT_ROOT!\!MODEL_NAME!
 echo  Launcher       : !LAUNCHER!
 echo.
 echo  Double-click run_acestep.bat to start the Gradio web UI.
-echo  Then open http://127.0.0.1:7865 in your browser.
+echo  Then open http://127.0.0.1:7860 in your browser.
 echo.
 if "!GPU_DETECTED!"=="0" (
     echo  NOTE: No GPU detected. Generation will be slow.
@@ -443,9 +497,9 @@ if "!GPU_DETECTED!"=="0" (
     echo  For faster generation, use a CUDA-capable GPU.
     echo.
 )
-echo  Optional speed flags you can add to run_acestep.bat:
-echo    --torch_compile true    (faster, requires triton-windows on Windows)
-echo    --overlapped_decode true (faster decoding)
-echo    --cpu_offload true       (lower VRAM usage)
+echo  Optional flags you can add to run_acestep.bat:
+echo    --offload_to_cpu true   (lower VRAM usage)
+echo    --lm_model_path acestep-5Hz-lm-0.6B  (smaller language model for low VRAM)
+echo    --init_llm false        (DiT-only mode for very low VRAM)
 echo.
 pause

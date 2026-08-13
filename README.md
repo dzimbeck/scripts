@@ -34,16 +34,16 @@ Then double-click `run_flux2.bat` to launch.
 
 ---
 
-### ACE-Step — Music/Audio Generation (`install_acestep.bat`)
+### ACE-Step 1.5 — Music/Audio Generation (`install_acestep.bat`)
 
-Downloads and configures [ACE-Step](https://github.com/ace-step/ACE-Step) for local music generation.
+Downloads and configures [ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5) for local music generation.
 
 **What it does:**
 
-1. Installs **Python 3.10** locally under `acestep-model\` (official python.org NuGet build, with pyenv-win and embeddable-zip fallbacks)
-2. Creates an isolated virtual environment
-3. Detects NVIDIA GPU and installs CUDA 12.6 or CPU-only PyTorch
-4. Installs ACE-Step from GitHub (`pip install https://...main.zip`) plus `gradio==5.49.1`
+1. Installs **Python 3.11** locally under `acestep-model\` (official python.org NuGet build, with pyenv-win and embeddable-zip fallbacks). ACE-Step 1.5 requires Python 3.11–3.12, and its prebuilt Windows wheels (flash-attn / triton-windows for nano-vllm) are cp311.
+2. Creates an isolated virtual environment (an old Python 3.10 venv from a previous installer version is detected and recreated automatically)
+3. Installs PyTorch exactly as ACE-Step 1.5 pins for Windows: `torch==2.7.1+cu128`, `torchvision==0.22.1+cu128`, `torchaudio==2.7.1+cu128`
+4. Installs ACE-Step 1.5 from the GitHub source zip, including its vendored `nano-vllm` package; all other dependency versions (`gradio==6.2.0`, `transformers`, `torchcodec`, …) come from ACE-Step's own `pyproject.toml` pins
 5. Prompts you to choose a checkpoint:
 
    | Option | Repo ID | Size | Notes |
@@ -52,7 +52,7 @@ Downloads and configures [ACE-Step](https://github.com/ace-step/ACE-Step) for lo
    | 2 | `ACE-Step/acestep-v15-sft` | ~14 GB | ACE-Step 1.5 SFT checkpoint for stronger prompt following |
    | 3 | `ACE-Step/acestep-v15-turbo-continuous` | ~14 GB | ACE-Step 1.5 turbo checkpoint for faster generation |
 
-6. Downloads checkpoint via `download_model.py` (resumable)
+6. Downloads the checkpoint via `download_model.py` (resumable) into `acestep-model\checkpoints\<model_name>\`. Checkpoints already downloaded by an older version of this installer are migrated into the new layout automatically — no re-download. Shared components (VAE, text encoder, language model) are auto-downloaded by ACE-Step on first launch.
 7. Generates `run_acestep.bat` launcher pointing at the downloaded checkpoint
 
 **To run:**
@@ -61,12 +61,12 @@ Downloads and configures [ACE-Step](https://github.com/ace-step/ACE-Step) for lo
 install_acestep.bat
 ```
 
-Then double-click `run_acestep.bat` to open the Gradio UI at `http://127.0.0.1:7865`.
+Then double-click `run_acestep.bat` to open the Gradio UI at `http://127.0.0.1:7860`.
 
-**No GPU?** The installer detects this automatically and enables `--cpu_offload true`. Generation will be slow but functional.
+**No GPU?** The installer detects this automatically and enables `--offload_to_cpu true`. Generation will be slow but functional.
 
 **License:**
-- Code: [Apache-2.0](https://github.com/ace-step/ACE-Step/blob/main/LICENSE)
+- Code: [MIT](https://github.com/ace-step/ACE-Step-1.5/blob/main/LICENSE)
 - Model weights: see the [model card](https://huggingface.co/ACE-Step/acestep-v15-base) on Hugging Face for the specific weight license.
 
 ---
@@ -127,7 +127,7 @@ python download_model.py "HuggingFaceH4/ultrachat_200k" "datasets" \
     --repo-type dataset --subdir ultrachat
 
 # 4. Download ACE-Step checkpoints:
-python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints --no-default-ignores
+python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints\acestep-v15-base --no-default-ignores
 ```
 
 ### Importable API
@@ -138,7 +138,7 @@ from download_model import download_repo
 ok = download_repo(
     repo_id="ACE-Step/acestep-v15-base",
     dest="ai",
-    subdir="checkpoints",
+    subdir="checkpoints/acestep-v15-base",
     repo_type="model",
     allow=["*.safetensors", "*.json"],   # optional allow-list
 )

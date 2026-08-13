@@ -38,7 +38,7 @@ Examples:
         --repo-type dataset --subdir ultrachat
 
     # Download ACE-Step checkpoints:
-    python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints
+    python download_model.py "ACE-Step/acestep-v15-base" "ai" --subdir checkpoints\\acestep-v15-base
 """
 
 from __future__ import annotations
